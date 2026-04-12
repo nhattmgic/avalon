@@ -3,10 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Avalon V23 - Nhat Group</title>
-    <!-- Firebase - Công nghệ kết nối ổn định nhất của Google -->
-    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+    <title>Avalon V22 - Group Nhat</title>
+    <script src="https://cdn.jsdelivr.net/npm/gun/gun.js"></script>
     <style>
         :root {
             --blue: #2471a3; --red: #922b21; --gold: #f1c40f; --dark: #121212; --card: #1e1e1e;
@@ -55,6 +53,7 @@
 
         .selectable-name { padding: 12px; background: #2a2a2a; margin: 5px 0; border-radius: 8px; cursor: pointer; font-weight: bold; border: 2px solid transparent; }
         .selectable-name.selected { background: var(--blue); border-color: white; }
+
         .card { background: var(--card); padding: 20px; border-radius: 15px; width: 100%; margin-bottom: 20px; box-shadow: 0 5px 15px rgba(0,0,0,0.5); }
         button { width: 100%; padding: 15px; margin: 10px 0; border-radius: 8px; border: none; font-size: 16px; font-weight: bold; cursor: pointer; background: var(--blue); color: white; }
         button:disabled { background: #444 !important; opacity: 0.6; }
@@ -67,27 +66,25 @@
 <body>
 
 <div class="container">
-    <!-- LOGIN -->
     <div id="view-login" class="card">
         <h1 style="color:var(--gold); text-align:center; margin-bottom:0;">AVALON ONLINE</h1>
-        <p style="text-align:center; color:var(--gold); font-size:12px; font-weight:bold; margin-top:5px;">VERSION V23</p>
-        <p id="net-status" style="text-align:center; font-size:10px; color:#888;">Đang kết nối Cloud...</p>
+        <p style="text-align:center; color:var(--gold); font-size:12px; font-weight:bold; margin-top:5px;">VERSION V22</p>
+        <p id="net-status" style="text-align:center; font-size:10px; color:#888;">Đang kết nối server...</p>
         <input style="width:94%; padding:15px; margin:20px 0; background:#222; color:white; border-radius:8px; border:1px solid #444; font-size:18px; text-align:center;" type="text" id="in-name" placeholder="Nhập tên của bạn">
         <button onclick="joinGame()">VÀO PHÒNG CHƠI</button>
     </div>
 
-    <!-- LOBBY -->
     <div id="view-lobby" class="hidden card">
         <h2 style="text-align:center; color:var(--gold);">PHÒNG CHỜ</h2>
-        <div id="lobby-list" style="margin: 20px 0; border-top: 1px solid #333; padding-top: 10px;"></div>
+        <div id="lobby-list" style="text-align: left; margin: 20px 0; min-height:100px; color: white;"></div>
+        
         <div id="host-controls" class="hidden">
-            <button id="btn-start" style="background:var(--gold); color:black" onclick="startGame()">BẮT ĐẦU GAME</button>
-            <button onclick="resetServer()" style="background:#444; font-size:11px;">RESET SERVER</button>
+            <button id="btn-start" style="background:var(--gold); color:black" onclick="startGame()">BẮT ĐẦU VÁN MỚI</button>
+            <button onclick="resetServer()" style="background:#444; font-size:11px;">RESET PHÒNG</button>
         </div>
         <p id="wait-msg" style="text-align:center; color:#888; font-size:13px;">Đang tìm thiết bị khác...</p>
     </div>
 
-    <!-- GAME -->
     <div id="view-game" class="hidden">
         <div class="quest-board" id="quest-board"></div>
         <div style="text-align:center; margin-bottom:10px; font-weight:bold; color:#aaa;" id="failed-bar">Lần bầu chọn: 0/3</div>
@@ -135,13 +132,17 @@
 </div>
 
 <script>
-    // Firebase Config - Dùng Database chung của Google Cloud cực ổn định
-    const firebaseConfig = { databaseURL: "https://avalon-nhat-stable-default-rtdb.firebaseio.com/" };
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.database();
+    // Server duy nhất cho cả nhóm 12 người
+    const SHARED_KEY = "AVALON_V22_NHAT_FINAL_SYNC";
+    const gun = Gun(['https://relay.art-v7.link/gun', 'https://gun-manhattan.herokuapp.com/gun']);
 
-    let myID = 'u' + Math.random().toString(36).substr(2, 5);
+    let myID = 'p' + Math.random().toString(36).substr(2, 5);
     let myName = '', state = null, playersLive = {};
+
+    gun.on('hi', () => {
+        document.getElementById('net-status').innerText = "● Trực tuyến";
+        document.getElementById('net-status').style.color = "#27ae60";
+    });
 
     function joinGame() {
         myName = document.getElementById('in-name').value.trim();
@@ -150,46 +151,55 @@
         document.getElementById('view-login').classList.add('hidden');
         document.getElementById('view-lobby').classList.remove('hidden');
 
+        // Tự động làm Host nếu tên là "Nhat"
         if(myName.toLowerCase() === 'nhat') {
             document.getElementById('host-controls').classList.remove('hidden');
         }
 
-        // Đăng ký online
-        const userRef = db.ref('lobby/' + myID);
-        userRef.set({id: myID, name: myName, t: Date.now()});
-        userRef.onDisconnect().remove();
+        const room = gun.get(SHARED_KEY);
+        const joinT = Date.now();
 
-        // Lắng nghe lobby
-        db.ref('lobby').on('value', snap => {
-            playersLive = snap.val() || {};
+        // Gửi nhịp đập báo online (1s/lần)
+        setInterval(() => {
+            room.get('players').get(myID).put({id: myID, name: myName, t: Date.now(), j: joinT});
+        }, 1000);
+
+        // Lắng nghe người chơi khác từ Gun mạng
+        room.get('players').map().on((data, id) => {
+            if (data && data.name && (Date.now() - data.t < 10000)) {
+                playersLive[id] = data;
+            } else {
+                delete playersLive[id];
+            }
             renderLobby();
         });
 
-        // Lắng nghe Game State
-        db.ref('state').on('value', snap => {
-            state = snap.val();
-            if (state) updateUI(state);
-            else {
-                document.getElementById('view-game').classList.add('hidden');
-                document.getElementById('view-lobby').classList.remove('hidden');
-            }
+        // Lắng nghe trạng thái game từ Gun mạng
+        room.get('state').on(d => {
+            if(d) updateUI(JSON.parse(d));
         });
     }
 
     function renderLobby() {
-        const list = Object.values(playersLive).sort((a,b) => a.t - b.t);
-        document.getElementById('lobby-list').innerHTML = list.map(p => `
-            <div style="padding:10px; border-bottom:1px solid #333;">
-                ${p.name.toLowerCase() === 'nhat' ? '👑' : '👤'} <b>${p.name}</b> ${p.id === myID ? '<small>(Bạn)</small>' : ''}
-            </div>
-        `).join('');
-        document.getElementById('wait-msg').innerText = `Hiện có: ${list.length} người.`;
+        const list = Object.values(playersLive).sort((a, b) => a.j - b.j);
+        document.getElementById('lobby-list').innerHTML = list.map(p => `• <b>${p.name}</b> ${p.id === myID ? '(Bạn)' : ''}`).join('<br>');
+        document.getElementById('wait-msg').innerText = `Hiện có: ${list.length}/12 người.`;
     }
 
-    function sync(data) { if(data) db.ref('state').set(data); }
-    function resetServer() { if(confirm("Xóa server?")) db.ref().set(null).then(()=>location.reload()); }
+    function resetServer() {
+        if(confirm("Xóa sạch dữ liệu server?")) {
+            gun.get(SHARED_KEY).put(null);
+            setTimeout(() => location.reload(), 500);
+        }
+    }
 
-    // --- LOGIC GAME GỐC (GIỮ NGUYÊN 100%) ---
+    function sync(data) {
+        if (!data) return;
+        gun.get(SHARED_KEY).get('state').put(JSON.stringify(data));
+        updateUI(data);
+    }
+
+    // --- TOÀN BỘ LOGIC GAME GỐC GIỮ NGUYÊN 100% ---
     const CONFIG = {
         7: { q: [2,3,3,4,4], r: ['Assassin','Morgana','Mordred','Merlin','Percival','Villager','Villager'] },
         8: { q: [3,4,4,5,5], r: ['Assassin','Morgana','Mordred','Merlin','Percival','Villager','Villager','Villager'] },
@@ -200,29 +210,32 @@
     };
 
     function startGame() {
-        const list = Object.values(playersLive).sort((a,b) => a.t - b.t);
-        const n = list.length;
+        const ps = Object.values(playersLive).sort((a, b) => a.j - b.j);
+        const n = ps.length;
         if(n < 7) return alert("Cần tối thiểu 7 người!");
         const c = CONFIG[n] || CONFIG[12];
-        const roles = [...c.r].sort(() => Math.random() - 0.5);
-        const order = list.map(p => p.id).sort(() => Math.random() - 0.5);
+        let rolesPool = [...c.r];
+        const roles = rolesPool.sort(() => Math.random() - 0.5);
+        const order = ps.map(p => p.id).sort(() => Math.random() - 0.5);
+        const kIdx = Math.floor(Math.random() * n);
         sync({
-            names: list.reduce((a, p) => ({...a, [p.id]: p.name}), {}),
+            names: ps.reduce((a, p) => ({...a, [p.id]: p.name}), {}),
             order, roles: order.reduce((a, id, i) => ({...a, [id]: roles[i]}), {}),
-            kingIdx: 0, ladyIdx: (n - 1), round: 1, points: [], failedVotes: 0, phase: 'SELECT', team: [],
-            votes: {}, missions: {}, showVotes: false, firstLady: (n - 1)
+            kingIdx: kIdx, ladyIdx: (kIdx - 1 + n) % n, firstLady: (kIdx - 1 + n) % n,
+            round: 1, points: [], failedVotes: 0, phase: 'SELECT', team: [],
+            votes: {}, missions: {}, showVotes: false
         });
     }
 
     function updateUI(s) {
-        if (!s || !s.order) return;
+        state = s;
         document.getElementById('view-lobby').classList.add('hidden');
         document.getElementById('view-game').classList.remove('hidden');
         const qC = (CONFIG[s.order.length] || CONFIG[12]).q;
         document.getElementById('quest-board').innerHTML = qC.map((num, i) => {
             let cls = (s.round === i+1) ? 'current' : '';
-            if(s.points && s.points[i] === 'WIN') cls = 'win';
-            if(s.points && s.points[i] === 'FAIL') cls = 'fail';
+            if(s.points[i] === 'WIN') cls = 'win';
+            if(s.points[i] === 'FAIL') cls = 'fail';
             return `<div class="quest-slot ${cls}"><small>${num}</small></div>`;
         }).join('');
         document.getElementById('failed-bar').innerText = `Lần bầu chọn vòng này: ${s.failedVotes}/3`;
@@ -237,15 +250,15 @@
             document.getElementById('phase-select').classList.remove('hidden');
             document.getElementById('num-needed').innerText = qC[s.round-1];
             document.getElementById('select-list').innerHTML = s.order.map(id => `
-                <div class="selectable-name ${(s.team || []).includes(id)?'selected':''}" onclick="toggleSelect('${id}')">${s.names[id]}</div>
+                <div class="selectable-name ${s.team.includes(id)?'selected':''}" onclick="toggleSelect('${id}')">${s.names[id]}</div>
             `).join('');
         } else if(s.phase === 'VOTE') {
             document.getElementById('phase-vote').classList.remove('hidden');
-            if(s.votes && s.votes[myID]) lock('phase-vote');
-        } else if(s.phase === 'MISSION' && (s.team || []).includes(myID)) {
+            if(s.votes[myID]) lock('phase-vote');
+        } else if(s.phase === 'MISSION' && s.team.includes(myID)) {
             document.getElementById('phase-mission').classList.remove('hidden');
             document.getElementById('btn-ms-fail').style.display = ['Assassin','Morgana','Mordred'].includes(s.roles[myID]) ? 'block' : 'none';
-            if(s.missions && s.missions[myID]) lock('phase-mission');
+            if(s.missions[myID]) lock('phase-mission');
         } else if(s.phase === 'LADY' && myID === s.order[s.ladyIdx]) {
             document.getElementById('phase-lady').classList.remove('hidden');
             document.getElementById('lady-list').innerHTML = s.order.filter(id => id !== myID).map(id => `
@@ -280,60 +293,62 @@
     function lock(p) { document.getElementById(p).querySelectorAll('button').forEach(b => b.disabled = true); }
 
     function toggleSelect(id) {
-        let nt = state.team ? [...state.team] : [];
-        if(nt.includes(id)) nt = nt.filter(x => x !== id);
-        else if(nt.length < (CONFIG[state.order.length] || CONFIG[12]).q[state.round-1]) nt.push(id);
-        sync({...state, team: nt});
+        if(state.team.includes(id)) state.team = state.team.filter(x => x !== id);
+        else if(state.team.length < (CONFIG[state.order.length] || CONFIG[12]).q[state.round-1]) state.team.push(id);
+        sync(state);
     }
 
     function submitTeam(btn) {
-        if((state.team || []).length !== (CONFIG[state.order.length] || CONFIG[12]).q[state.round-1]) return alert("Chọn đúng số người!");
+        if(state.team.length !== (CONFIG[state.order.length] || CONFIG[12]).q[state.round-1]) return alert("Chọn đúng số người!");
         btn.classList.add('clicked');
-        sync({...state, phase: state.failedVotes >= 3 ? 'MISSION' : 'VOTE', votes: {}, missions: {}, showVotes: false});
+        if(state.failedVotes >= 3) { state.phase = 'MISSION'; state.missions = {}; state.showVotes = false; }
+        else { state.phase = 'VOTE'; state.votes = {}; state.showVotes = false; }
+        sync(state);
     }
 
     function castVote(v, btn) {
         btn.classList.add('clicked'); lock('phase-vote');
-        let ns = {...state}; if(!ns.votes) ns.votes = {}; ns.votes[myID] = v;
-        if(Object.keys(ns.votes).length === ns.order.length) {
-            ns.showVotes = true;
-            const yes = Object.values(ns.votes).filter(x => x === 'YES').length;
-            if(yes > ns.order.length / 2) { ns.phase = 'MISSION'; ns.missions = {}; }
-            else { ns.failedVotes++; ns.kingIdx = (ns.kingIdx+1)%ns.order.length; ns.phase = 'SELECT'; ns.team = []; }
+        state.votes[myID] = v;
+        if(Object.keys(state.votes).length === state.order.length) {
+            state.showVotes = true;
+            const yes = Object.values(state.votes).filter(x => x === 'YES').length;
+            if(yes > state.order.length / 2) { state.phase = 'MISSION'; state.missions = {}; }
+            else { state.failedVotes++; state.kingIdx = (state.kingIdx+1)%state.order.length; state.phase = 'SELECT'; state.team = []; alert("Team bị bác bỏ! Chuyển Vua."); }
         }
-        sync(ns);
+        sync(state);
     }
 
     function castMission(v, btn) {
         btn.classList.add('clicked'); lock('phase-mission');
-        let ns = {...state}; if(!ns.missions) ns.missions = {}; ns.missions[myID] = v;
-        if(Object.keys(ns.missions).length === (ns.team || []).length) {
-            const f = Object.values(ns.missions).filter(x => x === 'FAIL').length;
-            const win = f < ((ns.order.length >= 7 && ns.round === 4) ? 2 : 1);
-            let pts = ns.points || []; pts[ns.round-1] = win ? 'WIN' : 'FAIL';
-            ns.points = pts; ns.lastMsg = win ? `<span class="blue-text">THÀNH CÔNG!</span>` : `<span class="red">THẤT BẠI! (${f} đỏ)</span>`;
-            ns.phase = 'RESULT';
+        state.missions[myID] = v;
+        if(Object.keys(state.missions).length === state.team.length) {
+            const f = Object.values(state.missions).filter(x => x === 'FAIL').length;
+            const win = f < ((state.order.length >= 7 && state.round === 4) ? 2 : 1);
+            state.points[state.round-1] = win ? 'WIN' : 'FAIL';
+            state.lastMsg = win ? `<span class="blue-text">THÀNH CÔNG!</span>` : `<span class="red">THẤT BẠI! (${f} đỏ)</span>`;
+            state.phase = 'RESULT';
         }
-        sync(ns);
+        sync(state);
     }
 
     function handleFlow(btn) {
         btn.classList.add('clicked');
-        let ns = {...state};
-        const bW = (ns.points || []).filter(x => x === 'WIN').length;
-        const rW = (ns.points || []).filter(x => x === 'FAIL').length;
-        if(rW >= 3) { ns.lastMsg = "<h1 class='red'>PHE ĐỎ THẮNG!</h1>"; sync(ns); return; }
-        if(bW >= 3) { ns.phase = 'ASSASSIN'; sync(ns); return; }
-        if(ns.round >= 2 && ns.round <= 4) { ns.phase = 'LADY'; ladyT = null; }
-        else { 
-            ns.round++; ns.kingIdx = (ns.kingIdx+1)%ns.order.length;
-            ns.phase = 'SELECT'; ns.team = []; ns.failedVotes = 0; ns.votes = {}; ns.showVotes = false;
-        }
-        sync(ns);
+        const bW = state.points.filter(x => x === 'WIN').length;
+        const rW = state.points.filter(x => x === 'FAIL').length;
+        if(rW >= 3) { state.lastMsg = "<h1 class='red'>PHE ĐỎ THẮNG!</h1>"; sync(state); return; }
+        if(bW >= 3) { state.phase = 'ASSASSIN'; sync(state); return; }
+        if(state.round >= 2 && state.round <= 4) { state.phase = 'LADY'; ladyT = null; }
+        else { proceedRound(); }
+        sync(state);
+    }
+
+    function proceedRound() {
+        state.round++; state.kingIdx = (state.kingIdx+1)%state.order.length;
+        state.phase = 'SELECT'; state.team = []; state.failedVotes = 0; state.votes = {}; state.showVotes = false;
     }
 
     let ladyT = null;
-    function selLady(id) { 
+    function selLady(id) {
         if(id === state.order[state.firstLady]) return alert("Không soi lady đầu!");
         ladyT = id; document.querySelectorAll('#lady-list .selectable-name').forEach(e => e.classList.remove('selected'));
         document.getElementById('l-'+id).classList.add('selected');
@@ -344,10 +359,7 @@
         btn.classList.add('clicked');
         const isR = ['Assassin','Morgana','Mordred'].includes(state.roles[ladyT]);
         alert(`${state.names[ladyT]} là phe: ${isR ? 'ĐỎ' : 'XANH'}`);
-        let ns = {...state}; ns.ladyIdx = ns.order.indexOf(ladyT);
-        ns.round++; ns.kingIdx = (ns.kingIdx+1)%ns.order.length;
-        ns.phase = 'SELECT'; ns.team = []; ns.failedVotes = 0; ns.votes = {}; ns.showVotes = false;
-        sync(ns);
+        state.ladyIdx = state.order.indexOf(ladyT); proceedRound(); sync(state);
     }
 
     let killT = null;
@@ -355,8 +367,8 @@
 
     function submitAssassin(btn) {
         if(!killT) return alert("Chọn Merlin!");
-        let ns = {...state}; ns.lastMsg = ns.roles[killT] === 'Merlin' ? "<h1 class='red'>GIẾT ĐÚNG MERLIN! ĐỎ THẮNG!</h1>" : "<h1 class='blue-text'>GIẾT SAI! XANH THẮNG!</h1>";
-        ns.phase = 'RESULT'; sync(ns);
+        state.lastMsg = state.roles[killT] === 'Merlin' ? "<h1 class='red'>GIẾT ĐÚNG MERLIN! ĐỎ THẮNG!</h1>" : "<h1 class='blue-text'>GIẾT SAI! XANH THẮNG!</h1>";
+        state.phase = 'RESULT'; sync(state);
     }
 
     function renderCircle() {
@@ -369,16 +381,17 @@
             if (id === myID) div.classList.add('me');
             const isK = i === state.kingIdx, isL = i === state.ladyIdx;
             if (isK && isL) div.classList.add('king-lady'); else if (isK) div.classList.add('king'); else if (isL) div.classList.add('lady');
-            if ((state.team || []).includes(id)) div.style.background = 'var(--blue)';
+            if (state.team.includes(id)) div.style.background = 'var(--blue)';
             div.style.left = x + 'px'; div.style.top = y + 'px';
             div.innerHTML = `<span>${state.names[id]}</span>`;
-            if(state.showVotes && state.votes && state.votes[id]) {
+            if(state.showVotes && state.votes[id]) {
                 const v = state.votes[id] === 'YES' ? '✔' : '✖', cls = state.votes[id] === 'YES' ? 'vote-yes' : 'vote-no';
                 div.innerHTML += `<div class="vote-badge ${cls}">${v}</div>`;
             }
             c.appendChild(div);
         });
     }
+
     function toggleRole() { document.getElementById('role-text').classList.toggle('hidden'); }
 </script>
 </body>
