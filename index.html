@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Avalon Online - Private Group</title>
+    <title>Avalon Online - Group Edition</title>
     <script src="https://cdn.jsdelivr.net/npm/gun/gun.js"></script>
     <style>
         :root {
@@ -62,20 +62,19 @@
 <div class="container">
     <div id="view-login" class="card">
         <h1 style="color:var(--gold); text-align:center;">AVALON ONLINE</h1>
-        <p id="net-status" style="text-align:center; font-size:10px; color:#555;">Đang kết nối...</p>
+        <p id="net-status" style="text-align:center; font-size:10px; color:#aaa;">Khởi tạo đường truyền...</p>
         <input style="width:94%; padding:15px; margin:20px 0; background:#222; color:white; border-radius:8px; border:1px solid #444; font-size:18px; text-align:center;" type="text" id="in-name" placeholder="Nhập tên của bạn">
-        <button onclick="joinGame()">VÀO CHƠI</button>
+        <button onclick="joinGame()">VÀO PHÒNG CHƠI</button>
     </div>
 
     <div id="view-lobby" class="hidden card">
-        <h2 style="text-align:center; color:var(--gold);">PHÒNG CHỜ</h2>
+        <h2 style="text-align:center; color:var(--gold); margin:0;">PHÒNG CHỜ</h2>
         <div id="lobby-list" style="margin: 20px 0; border-top: 1px solid #333; padding-top: 10px;"></div>
         <p id="wait-msg" style="text-align:center; color:#888; font-size:13px;"></p>
         
-        <!-- Chỉ Nhat mới thấy 2 nút này -->
         <div id="host-controls" class="hidden">
             <button id="btn-start" style="background:var(--gold); color:black" onclick="startGame()">BẮT ĐẦU GAME</button>
-            <button onclick="resetRoom()" style="background:#444; font-size:12px;">RESET PHÒNG (XÓA HẾT)</button>
+            <button onclick="resetRoom()" style="background:#444; font-size:11px;">RESET SERVER (CHỈ DÙNG KHI LỖI)</button>
         </div>
     </div>
 
@@ -119,17 +118,23 @@
             <div id="phase-result" class="hidden">
                 <h2 id="result-msg" style="text-align:center;"></h2>
                 <button id="btn-next" onclick="handleFlow(this)" style="background:var(--gold); color:black">TIẾP TỤC</button>
-                <button id="btn-back-lobby" class="hidden" onclick="location.reload()" style="background:#444;">VỀ PHÒNG CHỜ</button>
             </div>
         </div>
     </div>
 </div>
 
 <script>
-    // Một địa chỉ duy nhất cho cả nhóm
-    const SHARED_KEY = "AVALON_PRIVATE_GROUP_SYNC_FINAL";
-    const gun = Gun(['https://gun-manhattan.herokuapp.com/gun', 'https://relay.art-v7.link/gun']);
-    
+    // SỬ DỤNG MESH RELAY ĐỂ THÔNG MẠNG VIỆT NAM
+    const gun = Gun({
+        peers: [
+            'https://gun-manhattan.herokuapp.com/gun',
+            'https://relay.art-v7.link/gun',
+            'https://gun-server.com/gun',
+            'https://gun-ams1.marda.host/gun'
+        ]
+    });
+
+    const MAIN_KEY = "AVALON_V18_NHAT_FINAL_SYNC";
     let myID = 'u' + Math.random().toString(36).substr(2, 5);
     let myName = '', state = null;
     let playersLive = {};
@@ -141,26 +146,27 @@
 
     function joinGame() {
         myName = document.getElementById('in-name').value.trim();
-        if(!myName) return alert("Nhập tên!");
+        if(!myName) return alert("Vui lòng nhập tên!");
 
         document.getElementById('view-login').classList.add('hidden');
         document.getElementById('view-lobby').classList.remove('hidden');
 
+        // Phân quyền cho Nhat
         if(myName.toLowerCase() === 'nhat') {
             document.getElementById('host-controls').classList.remove('hidden');
         }
 
-        const room = gun.get(SHARED_KEY);
+        const room = gun.get(MAIN_KEY);
         const joinT = Date.now();
 
-        // Nhịp đập báo online
+        // Nhịp đập báo online (rất nhanh để không bị mất kết nối)
         setInterval(() => {
-            room.get('p').get(myID).put({id: myID, name: myName, t: Date.now(), j: joinT});
-        }, 1500);
+            room.get('players').get(myID).put({id: myID, name: myName, t: Date.now(), j: joinT});
+        }, 1000);
 
         // Lắng nghe lobby
-        room.get('p').map().on((data, id) => {
-            if (data && data.name && (Date.now() - data.t < 10000)) {
+        room.get('players').map().on((data, id) => {
+            if (data && data.name && (Date.now() - data.t < 8000)) {
                 playersLive[id] = data;
             } else {
                 delete playersLive[id];
@@ -168,24 +174,24 @@
             updateLobbyUI();
         });
 
-        // Lắng nghe game state
-        room.get('s').on(d => {
+        // Lắng nghe Game State
+        room.get('state').on(d => {
             if (d) {
-                try { state = JSON.parse(d); updateUI(state); } catch(e) {}
-            } else {
-                // Nếu state bị null (do reset), quay về lobby
-                document.getElementById('view-game').classList.add('hidden');
-                document.getElementById('view-lobby').classList.remove('hidden');
+                try {
+                    const parsed = JSON.parse(d);
+                    if (parsed) {
+                        state = parsed;
+                        updateUI(state);
+                    }
+                } catch(e) {}
             }
         });
     }
 
     function resetRoom() {
-        if(!confirm("Xóa toàn bộ dữ liệu game hiện tại?")) return;
-        const room = gun.get(SHARED_KEY);
-        room.get('s').put(null);
-        room.get('p').put(null);
-        setTimeout(() => location.reload(), 500);
+        if(!confirm("Xóa sạch toàn bộ dữ liệu server?")) return;
+        gun.get(MAIN_KEY).put(null);
+        setTimeout(() => location.reload(), 800);
     }
 
     function updateLobbyUI() {
@@ -199,17 +205,22 @@
 
         const isNhatOnline = list.some(p => p.name.toLowerCase() === 'nhat');
         if (list.length >= 7) {
-            document.getElementById('wait-msg').innerText = isNhatOnline ? "Đã đủ người. Chờ Nhat bấm Bắt đầu." : "Đã đủ người. Đang chờ Nhat vào phòng...";
+            document.getElementById('wait-msg').innerText = isNhatOnline ? "Đủ người! Chờ Nhat bấm Bắt đầu." : "Đủ người! Chờ Nhat vào phòng...";
         } else {
-            document.getElementById('wait-msg').innerText = `Chờ đủ 7 người (Hiện có: ${list.length})`;
+            document.getElementById('wait-msg').innerText = `Đang tìm thiết bị... (${list.length}/7)`;
         }
     }
 
     function sync(data) {
-        gun.get(SHARED_KEY).get('s').put(JSON.stringify(data));
+        if (!data) return;
+        const room = gun.get(MAIN_KEY);
+        const str = JSON.stringify(data);
+        room.get('state').put(str);
+        // Force-push lần 2 sau 200ms để chống lag mạng
+        setTimeout(() => room.get('state').put(str), 200);
     }
 
-    // --- LOGIC GAME CHUẨN ---
+    // --- LOGIC GAME (KHÔNG ĐỔI) ---
     const CONFIG = {
         7: { q: [2,3,3,4,4], r: ['Assassin','Morgana','Mordred','Merlin','Percival','Villager','Villager'] },
         8: { q: [3,4,4,5,5], r: ['Assassin','Morgana','Mordred','Merlin','Percival','Villager','Villager','Villager'] },
@@ -234,9 +245,10 @@
     }
 
     function updateUI(s) {
-        if (!s || !s.order) return;
+        if (!s || !s.order || !s.names) return;
         document.getElementById('view-lobby').classList.add('hidden');
         document.getElementById('view-game').classList.remove('hidden');
+        
         const qC = (CONFIG[s.order.length] || CONFIG[10]).q;
         document.getElementById('quest-board').innerHTML = qC.map((num, i) => {
             let cls = (s.round === i+1) ? 'current' : '';
@@ -244,13 +256,18 @@
             if(s.points[i] === 'FAIL') cls = 'fail';
             return `<div class="quest-slot ${cls}"><small>${num}</small></div>`;
         }).join('');
+        
         document.getElementById('failed-bar').innerText = `Lần bầu chọn: ${s.failedVotes}/3`;
         renderCircle();
         document.getElementById('game-status').innerText = `Vua: ${s.names[s.order[s.kingIdx]]}`;
+
         ['phase-select','phase-vote','phase-mission','phase-lady','phase-assassin','phase-result'].forEach(p => {
             document.getElementById(p).classList.add('hidden');
-            document.getElementById(p).querySelectorAll('button').forEach(b => { b.disabled = false; b.classList.remove('clicked'); });
+            document.getElementById(p).querySelectorAll('button').forEach(b => { 
+                b.disabled = false; b.classList.remove('clicked'); 
+            });
         });
+
         if(s.phase === 'SELECT' && myID === s.order[s.kingIdx]) {
             document.getElementById('phase-select').classList.remove('hidden');
             document.getElementById('num-needed').innerText = qC[s.round-1];
@@ -277,7 +294,6 @@
         } else if(s.phase === 'RESULT') {
             document.getElementById('phase-result').classList.remove('hidden');
             document.getElementById('result-msg').innerHTML = s.lastMsg;
-            if(s.lastMsg.includes("THẮNG")) document.getElementById('btn-back-lobby').classList.remove('hidden');
         }
 
         const myRole = s.roles[myID];
