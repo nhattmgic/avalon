@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Avalon Online By Nhat - King & Lady Sync</title>
-    <!-- Thêm các Relay Peer của Gun để tăng độ ổn định -->
+    <!-- Sử dụng bản Gun.js ổn định nhất -->
     <script src="https://cdn.jsdelivr.net/npm/gun/gun.js"></script>
     <style>
         :root {
@@ -78,14 +78,14 @@
             <button onclick="handleEntry('join')">VÀO PHÒNG</button>
             <button onclick="handleEntry('create')" style="background:var(--gold); color:black">TẠO MỚI</button>
         </div>
-        <p style="font-size:11px; color:#888; text-align:center; margin-top:10px;">* "TẠO MỚI" sẽ reset phòng hiện có.</p>
+        <p id="net-status" style="font-size:10px; color:#555; text-align:center;">Đang kết nối mạng...</p>
     </div>
 
     <div id="view-lobby" class="hidden card">
         <h2 id="room-title"></h2>
         <div id="lobby-list" style="text-align: left; margin: 20px 0;"></div>
         <button id="btn-start" class="hidden" style="background:var(--gold); color:black" onclick="startGame()">BẮT ĐẦU</button>
-        <p id="wait-msg" style="text-align:center; color:#888;">Chờ chủ phòng bắt đầu...</p>
+        <p id="wait-msg" style="text-align:center; color:#888;">Chờ mọi người vào đủ (7-10 người)...</p>
     </div>
 
     <div id="view-game" class="hidden">
@@ -134,16 +134,19 @@
 </div>
 
 <script>
-    // Khởi tạo Gun với nhiều peer dự phòng
-    const gun = Gun([
-        'https://gun-manhattan.herokuapp.com/gun',
-        'https://relay.art-v7.link/gun',
-        'https://gun-server.com/gun'
-    ]);
+    // SỬ DỤNG NHIỀU RELAY ĐỂ ĐẢM BẢO KẾT NỐI PC/MOBILE
+    const gun = Gun({
+        peers: [
+            'https://gun-manhattan.herokuapp.com/gun',
+            'https://relay.art-v7.link/gun',
+            'https://gun-server.com/gun',
+            'https://gun-ams1.marda.host/gun'
+        ]
+    });
     
     let myID = 'p_' + Math.random().toString(36).substr(2, 5);
     let myName = '', roomID = '', state = null;
-    let allPlayers = {}; // Đồng bộ danh sách người chơi online
+    let lobbyPlayers = {};
 
     const CONFIG = {
         7: { q: [2,3,3,4,4], r: ['Assassin','Morgana','Mordred','Merlin','Percival','Villager','Villager'] },
@@ -152,15 +155,11 @@
         10: { q: [3,4,4,5,5], r: ['Assassin','Morgana','Mordred','Merlin','Percival','Villager','Villager','Villager','Villager','Villager'] }
     };
 
-    // Hàm đồng bộ Game State
-    function sync(data) {
-        gun.get('avalon_v5_' + roomID).get('state').put(JSON.stringify(data));
-    }
+    // Theo dõi trạng thái mạng
+    gun.on('hi', () => document.getElementById('net-status').innerText = "Mạng: Đã kết nối");
 
-    // Hàm xóa dữ liệu phòng
-    function cleanup() {
-        gun.get('avalon_v5_' + roomID).get('state').put(null);
-        gun.get('avalon_v5_' + roomID).get('players').put(null);
+    function sync(data) {
+        gun.get('avalon_v5_room_' + roomID).get('state').put(JSON.stringify(data));
     }
 
     function handleEntry(mode) {
@@ -168,54 +167,65 @@
         myName = document.getElementById('in-name').value.trim();
         if(!roomID || !myName) return alert("Vui lòng điền đủ!");
 
-        if (mode === 'create') cleanup();
+        if (mode === 'create') {
+            gun.get('avalon_v5_room_' + roomID).put(null);
+        }
+        
         joinGame();
     }
 
     function joinGame() {
-        // 1. Lưu thông tin cá nhân lên Gun
-        gun.get('avalon_v5_' + roomID).get('players').get(myID).put(myName);
+        // Gửi thông tin của mình lên ngay lập tức và duy trì nhịp đập
+        const playerRef = gun.get('avalon_v5_room_' + roomID).get('players').get(myID);
+        setInterval(() => {
+            playerRef.put({ name: myName, lastSeen: Date.now() });
+        }, 2000);
 
-        // 2. Lắng nghe danh sách người chơi
-        gun.get('avalon_v5_' + roomID).get('players').map().on((name, id) => {
-            if (name) allPlayers[id] = name;
-            else delete allPlayers[id];
-            updateLobbyUI();
+        // Lắng nghe danh sách người chơi từ những người khác
+        gun.get('avalon_v5_room_' + roomID).get('players').map().on((data, id) => {
+            if (data && data.name) {
+                // Chỉ giữ người chơi có tương tác trong 10 giây qua để tránh người chơi ảo
+                if (Date.now() - data.lastSeen < 10000) {
+                    lobbyPlayers[id] = data.name;
+                } else {
+                    delete lobbyPlayers[id];
+                }
+                updateLobbyUI();
+            }
         });
 
-        // 3. Lắng nghe trạng thái Game
-        gun.get('avalon_v5_' + roomID).get('state').on(d => {
+        // Lắng nghe trạng thái game
+        gun.get('avalon_v5_room_' + roomID).get('state').on(d => {
             if(d) updateUI(JSON.parse(d));
         });
 
         document.getElementById('view-login').classList.add('hidden');
         document.getElementById('view-lobby').classList.remove('hidden');
-        document.getElementById('room-title').innerText = "Phòng: " + roomID;
+        document.getElementById('room-title').innerText = "Mã phòng: " + roomID;
     }
 
     function updateLobbyUI() {
-        const ids = Object.keys(allPlayers);
-        document.getElementById('lobby-list').innerHTML = ids.map(id => `• <b>${allPlayers[id]}</b> ${id === myID ? '(Bạn)' : ''}`).join('<br>');
+        const ids = Object.keys(lobbyPlayers).sort();
+        const listDiv = document.getElementById('lobby-list');
+        listDiv.innerHTML = ids.map(id => `• <b>${lobbyPlayers[id]}</b> ${id === myID ? '(Bạn)' : ''}`).join('<br>');
         
-        // Người đầu tiên vào phòng là chủ phòng (được hiện nút Start)
-        const isHost = ids.sort()[0] === myID;
-        if(ids.length >= 7 && isHost) {
+        // Người vào đầu tiên (theo ID) sẽ làm chủ phòng
+        if (ids.length >= 7 && ids[0] === myID) {
             document.getElementById('btn-start').classList.remove('hidden');
-            document.getElementById('wait-msg').classList.add('hidden');
         }
     }
 
     function startGame() {
-        const ids = Object.keys(allPlayers).sort(() => Math.random() - 0.5);
+        const ids = Object.keys(lobbyPlayers).sort(() => Math.random() - 0.5);
         const n = ids.length;
         const c = CONFIG[n] || CONFIG[10];
         let rolesPool = [...c.r];
-        if (n > 10) { for(let i=10; i<n; i++) rolesPool.push('Villager'); }
+        if (n > 10) for(let i=10; i<n; i++) rolesPool.push('Villager');
         const roles = rolesPool.sort(() => Math.random() - 0.5);
-        
         const kIdx = Math.floor(Math.random() * n);
+
         sync({
-            names: allPlayers,
+            names: lobbyPlayers,
             order: ids,
             roles: ids.reduce((a, id, i) => ({...a, [id]: roles[i]}), {}),
             kingIdx: kIdx, ladyIdx: (kIdx - 1 + n) % n, firstLady: (kIdx - 1 + n) % n,
@@ -224,7 +234,7 @@
         });
     }
 
-    // --- GIỮ NGUYÊN TOÀN BỘ LOGIC UPDATE UI VÀ GAMEPLAY BÊN DƯỚI ---
+    // --- CÁC HÀM LOGIC GAME GIỮ NGUYÊN ---
     function updateUI(s) {
         state = s;
         document.getElementById('view-lobby').classList.add('hidden');
