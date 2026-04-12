@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Avalon Online By Nhat - V14 Final</title>
+    <title>Avalon Online By Nhat - V15 Final Sync</title>
     <script src="https://cdn.jsdelivr.net/npm/gun/gun.js"></script>
     <style>
         :root {
@@ -62,20 +62,20 @@
 <div class="container">
     <div id="view-login" class="card">
         <h1 style="color:var(--gold); text-align:center;">AVALON BY NHAT</h1>
-        <div id="net-indicator" style="text-align:center; font-size:10px; color:#ff4d4d; margin-bottom:10px;">● Đang kết nối server...</div>
-        <input style="width:94%; padding:12px; margin:10px 0; background:#222; color:white; border-radius:8px; border:1px solid #444;" type="text" id="in-room" placeholder="Mã phòng (Ví dụ: 1)">
+        <div id="status-tag" style="text-align:center; font-size:10px; color:#aaa; margin-bottom:10px;">Đang kết nối siêu server...</div>
+        <input style="width:94%; padding:12px; margin:10px 0; background:#222; color:white; border-radius:8px; border:1px solid #444;" type="text" id="in-room" placeholder="Mã phòng">
         <input style="width:94%; padding:12px; margin:10px 0; background:#222; color:white; border-radius:8px; border:1px solid #444;" type="text" id="in-name" placeholder="Tên của bạn">
         <div style="display:flex; gap:10px;">
             <button onclick="handleEntry('join')">VÀO PHÒNG</button>
             <button onclick="handleEntry('create')" style="background:var(--gold); color:black">TẠO MỚI</button>
         </div>
-        <p style="font-size:10px; color:#666; text-align:center; margin-top:10px;">Bản V14: Tự động dọn dẹp dữ liệu cũ khi Tạo mới.</p>
+        <p style="font-size:10px; color:#555; text-align:center;">Bản V15: Kết nối đa nền tảng.</p>
     </div>
 
     <div id="view-lobby" class="hidden card">
         <h2 id="room-title" style="text-align:center; color:var(--gold); margin:0;"></h2>
         <div id="lobby-list" style="margin: 20px 0; border-top: 1px solid #333; padding-top: 10px;"></div>
-        <p id="wait-msg" style="text-align:center; color:#888; font-size:13px;"></p>
+        <p id="wait-msg" style="text-align:center; color:#888; font-size:13px;">Đang tìm thiết bị khác...</p>
         <button id="btn-start" class="hidden" style="background:var(--gold); color:black" onclick="startGame()">BẮT ĐẦU</button>
     </div>
 
@@ -107,7 +107,7 @@
                 <button id="btn-ms-fail" onclick="castMission('FAIL', this)" style="background:var(--red)">THẤT BẠI</button>
             </div>
             <div id="phase-lady" class="hidden">
-                <p>Lady of the Lake, chọn 1 người để soi:</p>
+                <p>Lady của Hồ, chọn 1 người để soi:</p>
                 <div id="lady-list"></div>
                 <button id="btn-lady" onclick="submitLady(this)" style="background:var(--gold); color:black">SOI VAI TRÒ</button>
             </div>
@@ -125,70 +125,70 @@
 </div>
 
 <script>
-    // Dùng 3 server để đảm bảo thông mạng tuyệt đối
+    // Dùng relay server mạnh nhất cho đa nền tảng
     const gun = Gun({
         peers: [
             'https://gun-manhattan.herokuapp.com/gun',
-            'https://relay.art-v7.link/gun',
+            'https://relay.peer.ooo/gun',
             'https://gun-server.com/gun'
         ]
     });
 
     let myID = 'u' + Math.random().toString(36).substr(2, 5);
-    let myName = '', roomID = '', state = null;
+    let myName = '', currentRoomKey = '', state = null;
     let playersLive = {};
-    let resetTime = 0;
 
     gun.on('hi', () => {
-        document.getElementById('net-indicator').innerText = "● Đã kết nối server";
-        document.getElementById('net-indicator').style.color = "#27ae60";
+        document.getElementById('status-tag').innerText = "Trạng thái: Đã kết nối";
+        document.getElementById('status-tag').style.color = "#27ae60";
     });
 
     function handleEntry(mode) {
         const raw = document.getElementById('in-room').value.trim().toUpperCase();
         myName = document.getElementById('in-name').value.trim();
-        if(!raw || !myName) return alert("Nhập đủ thông tin!");
-        
-        roomID = "AVALON_V14_SYNC_" + raw;
-        const room = gun.get(roomID);
+        if(!raw || !myName) return alert("Vui lòng điền đủ!");
+
+        const masterNode = gun.get("NHAT_AVALON_MASTER_" + raw);
 
         if (mode === 'create') {
-            resetTime = Date.now();
-            room.get('meta').put({ resetAt: resetTime });
-            // Ghi đè trạng thái game cũ
-            room.get('state').put(null);
-            setTimeout(startSession, 500);
+            // Tạo ID phiên chơi mới để xóa sạch dữ liệu cũ
+            const sessionID = "SESS_" + Date.now() + "_" + Math.floor(Math.random()*1000);
+            masterNode.put({ activeSession: sessionID });
+            currentRoomKey = sessionID;
+            setTimeout(startSync, 500);
         } else {
-            room.get('meta').once(d => {
-                resetTime = d ? d.resetAt : 0;
-                startSession();
+            // Tìm phiên chơi đang hoạt động
+            masterNode.once(data => {
+                if (data && data.activeSession) {
+                    currentRoomKey = data.activeSession;
+                    startSync();
+                } else {
+                    alert("Phòng không tồn tại hoặc chủ phòng chưa tạo mới!");
+                }
             });
         }
     }
 
-    function startSession() {
-        const room = gun.get(roomID);
+    function startSync() {
+        const room = gun.get(currentRoomKey);
 
-        // Đăng ký bản thân với thời gian gia nhập
-        const joinT = Date.now();
+        // Duy trì nhịp đập 1.5s/lần
+        const joinTime = Date.now();
         setInterval(() => {
-            room.get('players').get(myID).put({id: myID, name: myName, t: Date.now(), joinedAt: joinT});
+            room.get('p').get(myID).put({id: myID, name: myName, t: Date.now(), j: joinTime});
         }, 1500);
 
-        // Lắng nghe danh sách lobby
-        room.get('players').map().on((data, id) => {
+        // Lắng nghe lobby
+        room.get('p').map().on((data, id) => {
             if (data && data.name) {
-                // ĐIỀU KIỆN QUAN TRỌNG: Chỉ hiện người vào sau mốc Reset và vẫn đang online
-                if (data.joinedAt >= resetTime && (Date.now() - data.t < 10000)) {
-                    playersLive[id] = data;
-                } else {
-                    delete playersLive[id];
-                }
+                if (Date.now() - data.t < 10000) playersLive[id] = data;
+                else delete playersLive[id];
                 updateLobbyUI();
             }
         });
 
-        room.get('state').on(d => {
+        // Lắng nghe state
+        room.get('s').on(d => {
             if (d) {
                 try {
                     state = JSON.parse(d);
@@ -199,11 +199,11 @@
 
         document.getElementById('view-login').classList.add('hidden');
         document.getElementById('view-lobby').classList.remove('hidden');
-        document.getElementById('room-title').innerText = "PHÒNG: " + roomID.replace("AVALON_V14_SYNC_", "");
+        document.getElementById('room-title').innerText = "PHÒNG: " + currentRoomKey.split('_')[1];
     }
 
     function updateLobbyUI() {
-        const list = Object.values(playersLive).sort((a, b) => a.joinedAt - b.joinedAt);
+        const list = Object.values(playersLive).sort((a, b) => a.j - b.j);
         const lobbyDiv = document.getElementById('lobby-list');
         lobbyDiv.innerHTML = list.map((p, i) => `
             <div style="padding:12px; border-bottom:1px solid #333;">
@@ -213,20 +213,20 @@
 
         const isHost = list.length > 0 && list[0].id === myID;
         if (list.length >= 7) {
-            document.getElementById('wait-msg').innerText = "Đã đủ người!";
+            document.getElementById('wait-msg').innerText = "Sẵn sàng!";
             if (isHost) document.getElementById('btn-start').classList.remove('hidden');
         } else {
-            document.getElementById('wait-msg').innerText = `Đang chờ... (${list.length}/7)`;
+            document.getElementById('wait-msg').innerText = `Chờ đủ 7 người (${list.length}/7)...`;
             document.getElementById('btn-start').classList.add('hidden');
         }
     }
 
     function sync(data) {
-        if(!roomID || !data) return;
-        gun.get(roomID).get('state').put(JSON.stringify(data));
+        if(!currentRoomKey || !data) return;
+        gun.get(currentRoomKey).get('s').put(JSON.stringify(data));
     }
 
-    // --- GAME LOGIC (GIỮ NGUYÊN 100% THEO CHỐT) ---
+    // --- GAME LOGIC (GIỮ NGUYÊN) ---
     const CONFIG = {
         7: { q: [2,3,3,4,4], r: ['Assassin','Morgana','Mordred','Merlin','Percival','Villager','Villager'] },
         8: { q: [3,4,4,5,5], r: ['Assassin','Morgana','Mordred','Merlin','Percival','Villager','Villager','Villager'] },
@@ -235,7 +235,7 @@
     };
 
     function startGame() {
-        const list = Object.values(playersLive).sort((a, b) => a.joinedAt - b.joinedAt);
+        const list = Object.values(playersLive).sort((a, b) => a.j - b.j);
         const n = list.length;
         const c = CONFIG[n] || CONFIG[10];
         const roles = [...c.r].sort(() => Math.random() - 0.5);
@@ -253,6 +253,7 @@
         if (!s || !s.order) return;
         document.getElementById('view-lobby').classList.add('hidden');
         document.getElementById('view-game').classList.remove('hidden');
+        
         const qC = (CONFIG[s.order.length] || CONFIG[10]).q;
         document.getElementById('quest-board').innerHTML = qC.map((num, i) => {
             let cls = (s.round === i+1) ? 'current' : '';
@@ -260,13 +261,18 @@
             if(s.points[i] === 'FAIL') cls = 'fail';
             return `<div class="quest-slot ${cls}"><small>${num}</small></div>`;
         }).join('');
+        
         document.getElementById('failed-bar').innerText = `Lần bầu chọn vòng này: ${s.failedVotes}/3`;
         renderCircle();
         document.getElementById('game-status').innerText = `Vua: ${s.names[s.order[s.kingIdx]]}`;
+
         ['phase-select','phase-vote','phase-mission','phase-lady','phase-assassin','phase-result'].forEach(p => {
             document.getElementById(p).classList.add('hidden');
-            document.getElementById(p).querySelectorAll('button').forEach(b => { b.disabled = false; b.classList.remove('clicked'); });
+            document.getElementById(p).querySelectorAll('button').forEach(b => { 
+                b.disabled = false; b.classList.remove('clicked'); 
+            });
         });
+
         if(s.phase === 'SELECT' && myID === s.order[s.kingIdx]) {
             document.getElementById('phase-select').classList.remove('hidden');
             document.getElementById('num-needed').innerText = qC[s.round-1];
@@ -299,9 +305,9 @@
         const isRed = ['Assassin','Morgana','Mordred'].includes(myRole);
         let rInfo = `VAI TRÒ: <b class="${isRed?'evil-text':'blue-text'}">${myRole}</b><br>`;
         if(myRole === 'Merlin') {
-            rInfo += `<small class="evil-text">Phe ác: ${s.order.filter(id => ['Assassin','Morgana'].includes(s.roles[id])).map(id => s.names[id]).join(', ')}</small>`;
+            rInfo += `<small class="evil-text">Kẻ ác: ${s.order.filter(id => ['Assassin','Morgana'].includes(s.roles[id])).map(id => s.names[id]).join(', ')}</small>`;
         } else if (myRole === 'Percival') {
-            rInfo += `<small class="blue-text">Merlin & Morgana: ${s.order.filter(id => ['Merlin','Morgana'].includes(s.roles[id])).map(id => s.names[id]).join(', ')}</small>`;
+            rInfo += `<small class="blue-text">Merlin/Morgana: ${s.order.filter(id => ['Merlin','Morgana'].includes(s.roles[id])).map(id => s.names[id]).join(', ')}</small>`;
         } else if(isRed) {
             const evils = s.order.filter(id => id !== myID && ['Assassin','Morgana','Mordred'].includes(s.roles[id])).map(id => s.names[id]);
             rInfo += `<small>Đồng đội: ${evils.join(', ')}</small>`;
@@ -318,6 +324,7 @@
         sync({...state, team: nt});
     }
     function submitTeam(btn) {
+        if(!state) return;
         if(state.team.length !== (CONFIG[state.order.length] || CONFIG[10]).q[state.round-1]) return alert("Chọn đúng số người!");
         btn.classList.add('clicked');
         let ns = {...state, votes: {}, missions: {}, showVotes: false};
@@ -325,6 +332,7 @@
         sync(ns);
     }
     function castVote(v, btn) {
+        if(!state) return;
         btn.classList.add('clicked'); lock('phase-vote');
         let ns = {...state}; ns.votes[myID] = v;
         if(Object.keys(ns.votes).length === ns.order.length) {
@@ -336,6 +344,7 @@
         sync(ns);
     }
     function castMission(v, btn) {
+        if(!state) return;
         btn.classList.add('clicked'); lock('phase-mission');
         let ns = {...state}; ns.missions[myID] = v;
         if(Object.keys(ns.missions).length === ns.team.length) {
@@ -348,6 +357,7 @@
         sync(ns);
     }
     function handleFlow(btn) {
+        if(!state) return;
         btn.classList.add('clicked');
         let ns = {...state};
         const bW = ns.points.filter(x => x === 'WIN').length, rW = ns.points.filter(x => x === 'FAIL').length;
