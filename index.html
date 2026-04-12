@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Avalon Online By Nhat - V11 Pro</title>
+    <title>Avalon Online By Nhat - V12 Super Sync</title>
     <script src="https://cdn.jsdelivr.net/npm/gun/gun.js"></script>
     <style>
         :root {
@@ -60,24 +60,27 @@
 <body>
 
 <div class="container">
+    <!-- VIEW LOGIN -->
     <div id="view-login" class="card">
-        <h1 style="color:var(--gold); text-align:center;">AVALON BY NHAT</h1>
+        <h1 style="color:var(--gold); text-align:center;">AVALON ONLINE BY NHAT</h1>
         <input style="width:94%; padding:12px; margin:10px 0; background:#222; color:white; border-radius:8px; border:1px solid #444;" type="text" id="in-room" placeholder="Mã phòng">
         <input style="width:94%; padding:12px; margin:10px 0; background:#222; color:white; border-radius:8px; border:1px solid #444;" type="text" id="in-name" placeholder="Tên của bạn">
         <div style="display:flex; gap:10px;">
             <button onclick="handleEntry('join')">VÀO PHÒNG</button>
             <button onclick="handleEntry('create')" style="background:var(--gold); color:black">TẠO MỚI</button>
         </div>
-        <p id="net-status" style="font-size:11px; color:#555; text-align:center;">V11: Đang kết nối...</p>
+        <p id="net-status" style="font-size:10px; color:#666; text-align:center; margin-top:10px;">Nếu phòng bị kẹt, hãy bấm "TẠO MỚI" để reset.</p>
     </div>
 
+    <!-- VIEW LOBBY -->
     <div id="view-lobby" class="hidden card">
         <h2 id="room-title" style="text-align:center; color:var(--gold);"></h2>
         <div id="lobby-list" style="margin: 20px 0; border-top: 1px solid #333; padding-top: 10px;"></div>
-        <p id="wait-msg" style="text-align:center; color:#888;"></p>
-        <button id="btn-start" class="hidden" style="background:var(--gold); color:black" onclick="startGame()">BẮT ĐẦU</button>
+        <p id="wait-msg" style="text-align:center; color:#888; font-size: 13px;"></p>
+        <button id="btn-start" class="hidden" style="background:var(--gold); color:black" onclick="startGame()">BẮT ĐẦU GAME</button>
     </div>
 
+    <!-- VIEW GAME -->
     <div id="view-game" class="hidden">
         <div class="quest-board" id="quest-board"></div>
         <div style="text-align:center; margin-bottom:10px; font-weight:bold; color:#aaa;" id="failed-bar">Lần bầu chọn: 0/3</div>
@@ -124,33 +127,27 @@
 </div>
 
 <script>
-    // Dùng mã định danh cực kỳ duy nhất cho nhóm của bạn
-    const ROOM_PATH = "NHAT_AVALON_PRIVATE_V11_";
     const gun = Gun({
-        peers: [
-            'https://gun-manhattan.herokuapp.com/gun',
-            'https://relay.art-v7.link/gun'
-        ]
+        peers: ['https://gun-manhattan.herokuapp.com/gun', 'https://relay.art-v7.link/gun']
     });
 
     let myID = 'u' + Math.random().toString(36).substr(2, 5);
     let myName = '', roomKey = '', state = null;
-    let playersList = {};
-
-    gun.on('hi', () => document.getElementById('net-status').innerText = "Trạng thái: Đã kết nối");
+    let playersLive = {};
 
     function handleEntry(mode) {
-        const rawRoom = document.getElementById('in-room').value.trim().toUpperCase();
+        const raw = document.getElementById('in-room').value.trim().toUpperCase();
         myName = document.getElementById('in-name').value.trim();
-        if(!rawRoom || !myName) return alert("Vui lòng nhập đủ!");
+        if(!raw || !myName) return alert("Nhập đủ thông tin!");
         
-        roomKey = ROOM_PATH + rawRoom;
+        roomKey = "NHAT_AVALON_V12_" + raw;
 
         if (mode === 'create') {
-            gun.get(roomKey).put({reset: Date.now()});
+            // Force reset toàn bộ data phòng
+            gun.get(roomKey).put(null);
             gun.get(roomKey).get('players').put(null);
             gun.get(roomKey).get('state').put(null);
-            setTimeout(() => connect(), 600);
+            setTimeout(connect, 600);
         } else {
             connect();
         }
@@ -159,58 +156,63 @@
     function connect() {
         const room = gun.get(roomKey);
 
-        // Đăng ký và giữ nhịp đập 2 giây
+        // Nhịp đập báo online (2 giây/lần)
         setInterval(() => {
             room.get('players').get(myID).put({id: myID, name: myName, t: Date.now()});
         }, 2000);
 
-        // Lắng nghe người chơi
+        // Theo dõi danh sách lobby
         room.get('players').map().on((data, id) => {
             if (data && data.name) {
-                if (Date.now() - data.t < 10000) playersList[id] = data;
-                else delete playersList[id];
+                if (Date.now() - data.t < 8000) playersLive[id] = data;
+                else delete playersLive[id];
                 updateLobbyUI();
             }
         });
 
-        // Lắng nghe Game State
+        // Theo dõi Game State
         room.get('state').on(d => {
             if (d) {
-                state = JSON.parse(d);
-                updateUI(state);
+                try {
+                    state = JSON.parse(d);
+                    updateUI(state);
+                } catch(e) { console.log("Data sync error, waiting..."); }
             }
         });
 
         document.getElementById('view-login').classList.add('hidden');
         document.getElementById('view-lobby').classList.remove('hidden');
-        document.getElementById('room-title').innerText = "PHÒNG: " + roomKey.replace(ROOM_PATH, "");
+        document.getElementById('room-title').innerText = "PHÒNG: " + roomKey.split('_').pop();
     }
 
     function updateLobbyUI() {
-        const list = Object.values(playersList).sort((a, b) => a.t - b.t);
+        const list = Object.values(playersLive).sort((a, b) => a.t - b.t);
         const lobbyDiv = document.getElementById('lobby-list');
         lobbyDiv.innerHTML = list.map((p, i) => `
-            <div style="padding:12px; border-bottom:1px solid #333;">
-                ${i === 0 ? '👑' : '👤'} <b>${p.name}</b> ${p.id === myID ? '(Bạn)' : ''}
+            <div style="padding:12px; border-bottom:1px solid #333; display:flex; justify-content:space-between;">
+                <span>${i === 0 ? '👑' : '👤'} <b>${p.name}</b> ${p.id === myID ? '<small>(Bạn)</small>' : ''}</span>
             </div>
         `).join('');
 
         const isHost = list.length > 0 && list[0].id === myID;
+        const btnStart = document.getElementById('btn-start');
+        const waitMsg = document.getElementById('wait-msg');
+
         if (list.length >= 7) {
-            document.getElementById('wait-msg').innerText = "Phòng đã sẵn sàng!";
-            if (isHost) document.getElementById('btn-start').classList.remove('hidden');
+            waitMsg.innerText = "Phòng đã đủ người chơi!";
+            if (isHost) btnStart.classList.remove('hidden');
         } else {
-            document.getElementById('wait-msg').innerText = `Chờ đủ 7 người (Hiện có: ${list.length})`;
-            document.getElementById('btn-start').classList.add('hidden');
+            waitMsg.innerText = `Cần đủ 7 người (Hiện có: ${list.length})`;
+            btnStart.classList.add('hidden');
         }
     }
 
     function sync(data) {
-        if (!roomKey) return;
+        if(!roomKey || !data) return;
         gun.get(roomKey).get('state').put(JSON.stringify(data));
     }
 
-    // --- LOGIC GAME CHUẨN ---
+    // --- GAME LOGIC ---
     const CONFIG = {
         7: { q: [2,3,3,4,4], r: ['Assassin','Morgana','Mordred','Merlin','Percival','Villager','Villager'] },
         8: { q: [3,4,4,5,5], r: ['Assassin','Morgana','Mordred','Merlin','Percival','Villager','Villager','Villager'] },
@@ -219,7 +221,7 @@
     };
 
     function startGame() {
-        const list = Object.values(playersList).sort((a, b) => a.t - b.t);
+        const list = Object.values(playersLive).sort((a, b) => a.t - b.t);
         const n = list.length;
         const c = CONFIG[n] || CONFIG[10];
         const roles = [...c.r].sort(() => Math.random() - 0.5);
@@ -235,9 +237,10 @@
     }
 
     function updateUI(s) {
-        if (!s) return;
+        if (!s || !s.order) return;
         document.getElementById('view-lobby').classList.add('hidden');
         document.getElementById('view-game').classList.remove('hidden');
+        
         const qC = (CONFIG[s.order.length] || CONFIG[10]).q;
         document.getElementById('quest-board').innerHTML = qC.map((num, i) => {
             let cls = (s.round === i+1) ? 'current' : '';
@@ -245,14 +248,16 @@
             if(s.points[i] === 'FAIL') cls = 'fail';
             return `<div class="quest-slot ${cls}"><small>${num}</small></div>`;
         }).join('');
+        
         document.getElementById('failed-bar').innerText = `Lần bầu chọn vòng này: ${s.failedVotes}/3`;
         renderCircle();
         document.getElementById('game-status').innerText = `Vua: ${s.names[s.order[s.kingIdx]]}`;
+
         ['phase-select','phase-vote','phase-mission','phase-lady','phase-assassin','phase-result'].forEach(p => {
             document.getElementById(p).classList.add('hidden');
-            const btns = document.getElementById(p).querySelectorAll('button');
-            btns.forEach(b => { b.disabled = false; b.classList.remove('clicked'); });
+            document.getElementById(p).querySelectorAll('button').forEach(b => { b.disabled = false; b.classList.remove('clicked'); });
         });
+
         if(s.phase === 'SELECT' && myID === s.order[s.kingIdx]) {
             document.getElementById('phase-select').classList.remove('hidden');
             document.getElementById('num-needed').innerText = qC[s.round-1];
@@ -285,7 +290,7 @@
         const isRed = ['Assassin','Morgana','Mordred'].includes(myRole);
         let rInfo = `VAI TRÒ: <b class="${isRed?'evil-text':'blue-text'}">${myRole}</b><br>`;
         if(myRole === 'Merlin') {
-            rInfo += `<small class="evil-text">Kẻ ác (trừ Mordred): ${s.order.filter(id => ['Assassin','Morgana'].includes(s.roles[id])).map(id => s.names[id]).join(', ')}</small>`;
+            rInfo += `<small class="evil-text">Phe ác: ${s.order.filter(id => ['Assassin','Morgana'].includes(s.roles[id])).map(id => s.names[id]).join(', ')}</small>`;
         } else if (myRole === 'Percival') {
             rInfo += `<small class="blue-text">Merlin & Morgana: ${s.order.filter(id => ['Merlin','Morgana'].includes(s.roles[id])).map(id => s.names[id]).join(', ')}</small>`;
         } else if(isRed) {
@@ -296,7 +301,6 @@
     }
 
     function lock(p) { document.getElementById(p).querySelectorAll('button').forEach(b => b.disabled = true); }
-
     function toggleSelect(id) {
         if(!state) return;
         let nt = [...state.team];
@@ -304,19 +308,14 @@
         else if(nt.length < (CONFIG[state.order.length] || CONFIG[10]).q[state.round-1]) nt.push(id);
         sync({...state, team: nt});
     }
-
     function submitTeam(btn) {
-        if(!state) return;
         if(state.team.length !== (CONFIG[state.order.length] || CONFIG[10]).q[state.round-1]) return alert("Chọn đúng số người!");
         btn.classList.add('clicked');
         let ns = {...state, votes: {}, missions: {}, showVotes: false};
-        if(ns.failedVotes >= 2) ns.phase = 'MISSION';
-        else ns.phase = 'VOTE';
+        ns.phase = (ns.failedVotes >= 2) ? 'MISSION' : 'VOTE';
         sync(ns);
     }
-
     function castVote(v, btn) {
-        if(!state) return;
         btn.classList.add('clicked'); lock('phase-vote');
         let ns = {...state}; ns.votes[myID] = v;
         if(Object.keys(ns.votes).length === ns.order.length) {
@@ -327,9 +326,7 @@
         }
         sync(ns);
     }
-
     function castMission(v, btn) {
-        if(!state) return;
         btn.classList.add('clicked'); lock('phase-mission');
         let ns = {...state}; ns.missions[myID] = v;
         if(Object.keys(ns.missions).length === ns.team.length) {
@@ -341,51 +338,39 @@
         }
         sync(ns);
     }
-
     function handleFlow(btn) {
-        if(!state) return;
         btn.classList.add('clicked');
         let ns = {...state};
-        const bW = ns.points.filter(x => x === 'WIN').length;
-        const rW = ns.points.filter(x => x === 'FAIL').length;
+        const bW = ns.points.filter(x => x === 'WIN').length, rW = ns.points.filter(x => x === 'FAIL').length;
         if(rW >= 3) { ns.lastMsg = "<h1 class='red'>PHE ĐỎ THẮNG!</h1>"; sync(ns); return; }
         if(bW >= 3) { ns.phase = 'ASSASSIN'; sync(ns); return; }
         if(ns.round >= 2 && ns.round <= 4) ns.phase = 'LADY';
-        else { 
-            ns.round++; ns.kingIdx = (ns.kingIdx+1)%ns.order.length;
-            ns.phase = 'SELECT'; ns.team = []; ns.failedVotes = 0; ns.votes = {}; ns.showVotes = false;
-        }
+        else { ns.round++; ns.kingIdx = (ns.kingIdx+1)%ns.order.length; ns.phase = 'SELECT'; ns.team = []; ns.failedVotes = 0; ns.votes = {}; ns.showVotes = false; }
         sync(ns);
     }
-
     let ladyT = null;
-    function selLady(id) {
-        if(id === state.order[state.firstLady]) return alert("Không soi người giữ Lady đầu tiên!");
+    function selLady(id) { 
+        if(id === state.order[state.firstLady]) return alert("Không soi Lady đầu!");
         ladyT = id; document.querySelectorAll('#lady-list .selectable-name').forEach(e => e.classList.remove('selected'));
         document.getElementById('l-'+id).classList.add('selected');
     }
-
     function submitLady(btn) {
         if(!ladyT) return alert("Chọn người!");
         btn.classList.add('clicked');
         const isR = ['Assassin','Morgana','Mordred'].includes(state.roles[ladyT]);
         alert(`${state.names[ladyT]} là phe: ${isR ? 'ĐỎ' : 'XANH'}`);
-        let ns = {...state, ladyIdx: state.order.indexOf(ladyT), round: state.round + 1, kingIdx: (state.kingIdx+1)%state.order.length, phase: 'SELECT', team: [], failedVotes: 0};
-        sync(ns);
+        sync({...state, ladyIdx: state.order.indexOf(ladyT), round: state.round+1, kingIdx: (state.kingIdx+1)%state.order.length, phase: 'SELECT', team: [], failedVotes: 0});
     }
-
     let killT = null;
     function selKill(id) { killT = id; document.querySelectorAll('#assassin-list .selectable-name').forEach(e => e.classList.remove('selected')); document.getElementById('a-'+id).classList.add('selected'); }
     function submitAssassin(btn) {
         if(!killT) return alert("Chọn Merlin!");
-        let ns = {...state};
-        ns.lastMsg = ns.roles[killT] === 'Merlin' ? "<h1 class='red'>GIẾT ĐÚNG MERLIN! ĐỎ THẮNG!</h1>" : "<h1 class='blue-text'>GIẾT SAI! XANH THẮNG!</h1>";
+        let ns = {...state}; ns.lastMsg = ns.roles[killT] === 'Merlin' ? "<h1 class='red'>GIẾT ĐÚNG MERLIN! ĐỎ THẮNG!</h1>" : "<h1 class='blue-text'>GIẾT SAI! XANH THẮNG!</h1>";
         ns.phase = 'RESULT'; sync(ns);
     }
-
     function renderCircle() {
         const c = document.getElementById('player-circle'); c.innerHTML = '';
-        const n = state.order.length; const myIdx = state.order.indexOf(myID);
+        const n = state.order.length, myIdx = state.order.indexOf(myID);
         state.order.forEach((id, i) => {
             const angle = ((i - myIdx) * (360/n) + 90) * (Math.PI/180);
             const x = 160 + 115 * Math.cos(angle), y = 160 + 115 * Math.sin(angle);
@@ -399,8 +384,7 @@
             div.style.left = x + 'px'; div.style.top = y + 'px';
             div.innerHTML = `<span>${state.names[id]}</span>`;
             if(state.showVotes && state.votes[id]) {
-                const v = state.votes[id] === 'YES' ? '✔' : '✖';
-                const cls = state.votes[id] === 'YES' ? 'vote-yes' : 'vote-no';
+                const v = state.votes[id] === 'YES' ? '✔' : '✖', cls = state.votes[id] === 'YES' ? 'vote-yes' : 'vote-no';
                 div.innerHTML += `<div class="vote-badge ${cls}">${v}</div>`;
             }
             c.appendChild(div);
