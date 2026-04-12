@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Avalon Online By Nhat - Pro Sync</title>
+    <!-- Sử dụng Gun.js bản ổn định nhất -->
     <script src="https://cdn.jsdelivr.net/npm/gun/gun.js"></script>
     <style>
         :root {
@@ -66,23 +67,21 @@
 
 <div class="container">
     <div id="view-login" class="card">
-        <h1 style="color:var(--gold); text-align:center;">AVALON ONLINE</h1>
-        <input style="width:94%; padding:12px; margin:10px 0; background:#222; color:white; border-radius:8px; border:1px solid #444;" type="text" id="in-room" placeholder="Mã phòng (VD: NHAT123)">
+        <h1 style="color:var(--gold); text-align:center;">AVALON ONLINE BY NHAT</h1>
+        <input style="width:94%; padding:12px; margin:10px 0; background:#222; color:white; border-radius:8px; border:1px solid #444;" type="text" id="in-room" placeholder="Mã phòng (VD: 1234)">
         <input style="width:94%; padding:12px; margin:10px 0; background:#222; color:white; border-radius:8px; border:1px solid #444;" type="text" id="in-name" placeholder="Tên của bạn">
         <div style="display:flex; gap:10px;">
             <button onclick="handleEntry('join')">VÀO PHÒNG</button>
             <button onclick="handleEntry('create')" style="background:var(--gold); color:black">TẠO MỚI</button>
         </div>
-        <p style="font-size:11px; color:#888; text-align:center;">* Nút TẠO MỚI sẽ xóa sạch dữ liệu cũ của phòng.</p>
+        <p id="status-net" style="font-size:11px; color:#666; text-align:center; margin-top:10px;">Đang kết nối Server...</p>
     </div>
 
     <div id="view-lobby" class="hidden card">
         <h2 id="room-title" style="text-align:center; color:var(--gold);"></h2>
-        <div id="lobby-list" style="margin: 20px 0; min-height: 100px; border-top: 1px solid #333; padding-top: 10px;"></div>
-        <div id="lobby-footer" style="text-align:center;">
-            <p id="wait-msg">Đang đợi người chơi khác...</p>
-            <button id="btn-start" class="hidden" style="background:var(--gold); color:black" onclick="startGame()">BẮT ĐẦU GAME</button>
-        </div>
+        <div id="lobby-list" style="margin: 20px 0; border-top: 1px solid #333; padding-top: 10px;"></div>
+        <p id="wait-msg" style="text-align:center; color:#888;">Chờ mọi người vào đủ (7-10 người)...</p>
+        <button id="btn-start" class="hidden" style="background:var(--gold); color:black" onclick="startGame()">BẮT ĐẦU GAME</button>
     </div>
 
     <div id="view-game" class="hidden">
@@ -131,11 +130,85 @@
 </div>
 
 <script>
-    // Khởi tạo Gun với các relay server ổn định nhất
-    const gun = Gun(['https://gun-manhattan.herokuapp.com/gun', 'https://relay.art-v7.link/gun']);
-    let myID = 'p' + Math.random().toString(36).substr(2, 5);
+    // Dùng relay server HTTPS ổn định hơn cho GitHub Pages
+    const gun = Gun({
+        peers: [
+            'https://gun-manhattan.herokuapp.com/gun',
+            'https://relay.art-v7.link/gun'
+        ]
+    });
+
+    let myID = 'u' + Math.random().toString(36).substr(2, 5);
     let myName = '', roomID = '', state = null;
-    let playersMap = {}; 
+    let playersMap = {};
+
+    gun.on('hi', () => document.getElementById('status-net').innerText = "Mạng: Sẵn sàng");
+
+    function handleEntry(mode) {
+        roomID = document.getElementById('in-room').value.trim().toUpperCase();
+        myName = document.getElementById('in-name').value.trim();
+        if(!roomID || !myName) return alert("Nhập đủ tên và mã phòng!");
+
+        if (mode === 'create') {
+            // Gửi tín hiệu xóa dữ liệu cũ trên Gun
+            gun.get('avalon_nhat_v7_' + roomID).put(null);
+            setTimeout(joinGame, 500);
+        } else {
+            joinGame();
+        }
+    }
+
+    function joinGame() {
+        const room = gun.get('avalon_nhat_v7_' + roomID);
+        
+        // Ghi danh bản thân với timestamp để xác định chủ phòng
+        room.get('players').get(myID).put({
+            id: myID, 
+            name: myName, 
+            t: Date.now()
+        });
+
+        // Lắng nghe người chơi khác
+        room.get('players').map().on((data, id) => {
+            if (data) playersMap[id] = data;
+            else delete playersMap[id];
+            updateLobbyUI();
+        });
+
+        // Lắng nghe trạng thái game
+        room.get('state').on(d => {
+            if (d) updateUI(JSON.parse(d));
+        });
+
+        document.getElementById('view-login').classList.add('hidden');
+        document.getElementById('view-lobby').classList.remove('hidden');
+        document.getElementById('room-title').innerText = "Mã phòng: " + roomID;
+    }
+
+    function updateLobbyUI() {
+        const list = Object.values(playersMap).sort((a, b) => a.t - b.t);
+        const lobbyDiv = document.getElementById('lobby-list');
+        
+        lobbyDiv.innerHTML = list.map((p, i) => `
+            <div style="padding:12px; border-bottom:1px solid #333; display:flex; justify-content:space-between;">
+                <span>${i === 0 ? '👑' : '👤'} <b>${p.name}</b> ${p.id === myID ? '<small>(Bạn)</small>' : ''}</span>
+            </div>
+        `).join('');
+
+        const isHost = list.length > 0 && list[0].id === myID;
+        if (isHost && list.length >= 7) {
+            document.getElementById('btn-start').classList.remove('hidden');
+            document.getElementById('wait-msg').classList.add('hidden');
+        } else {
+            document.getElementById('btn-start').classList.add('hidden');
+            document.getElementById('wait-msg').classList.remove('hidden');
+            document.getElementById('wait-msg').innerText = isHost ? `Cần thêm ${7 - list.length} người nữa...` : "Chờ chủ phòng bắt đầu...";
+        }
+    }
+
+    function sync(data) {
+        gun.get('avalon_nhat_v7_' + roomID).get('state').put(JSON.stringify(data));
+    }
 
     const CONFIG = {
         7: { q: [2,3,3,4,4], r: ['Assassin','Morgana','Mordred','Merlin','Percival','Villager','Villager'] },
@@ -144,78 +217,8 @@
         10: { q: [3,4,4,5,5], r: ['Assassin','Morgana','Mordred','Merlin','Percival','Villager','Villager','Villager','Villager','Villager'] }
     };
 
-    function handleEntry(mode) {
-        roomID = document.getElementById('in-room').value.trim().toUpperCase();
-        myName = document.getElementById('in-name').value.trim();
-        if(!roomID || !myName) return alert("Vui lòng nhập mã phòng và tên!");
-
-        if (mode === 'create') {
-            // Xóa toàn bộ dữ liệu của node phòng này
-            gun.get('nhat_avalon_v6_' + roomID).put(null);
-            setTimeout(joinGame, 500); // Đợi 1 chút để lệnh xóa thực thi xong
-        } else {
-            joinGame();
-        }
-    }
-
-    function joinGame() {
-        const room = gun.get('nhat_avalon_v6_' + roomID);
-        
-        // Gửi thông tin cá nhân lên node 'players' của phòng
-        room.get('players').get(myID).put({
-            id: myID,
-            name: myName,
-            joinedAt: Date.now()
-        });
-
-        // Lắng nghe danh sách người chơi
-        room.get('players').map().on((data, id) => {
-            if (data) {
-                playersMap[id] = data;
-            } else {
-                delete playersMap[id];
-            }
-            updateLobbyUI();
-        });
-
-        // Lắng nghe trạng thái game
-        room.get('state').on(d => {
-            if(d) updateUI(JSON.parse(d));
-        });
-
-        document.getElementById('view-login').classList.add('hidden');
-        document.getElementById('view-lobby').classList.remove('hidden');
-        document.getElementById('room-title').innerText = "PHÒNG: " + roomID;
-    }
-
-    function updateLobbyUI() {
-        const list = Object.values(playersMap).sort((a, b) => a.joinedAt - b.joinedAt);
-        const lobbyList = document.getElementById('lobby-list');
-        lobbyList.innerHTML = list.map((p, index) => 
-            `<div style="padding:10px; border-bottom:1px solid #222;">
-                ${index === 0 ? '👑' : '👤'} <b>${p.name}</b> ${p.id === myID ? '<small>(Bạn)</small>' : ''}
-            </div>`
-        ).join('');
-
-        // Người vào đầu tiên là chủ phòng
-        const isHost = list.length > 0 && list[0].id === myID;
-        if (isHost && list.length >= 7) {
-            document.getElementById('btn-start').classList.remove('hidden');
-            document.getElementById('wait-msg').innerText = "Phòng đã sẵn sàng!";
-        } else if (isHost) {
-            document.getElementById('wait-msg').innerText = `Cần tối thiểu 7 người (Hiện có: ${list.length})`;
-            document.getElementById('btn-start').classList.add('hidden');
-        } else {
-            document.getElementById('wait-msg').innerText = "Đang đợi chủ phòng bắt đầu...";
-        }
-    }
-
-    function sync(data) {
-        gun.get('nhat_avalon_v6_' + roomID).get('state').put(JSON.stringify(data));
-    }
-
     function startGame() {
-        const list = Object.values(playersMap).sort((a, b) => a.joinedAt - b.joinedAt);
+        const list = Object.values(playersMap).sort((a, b) => a.t - b.t);
         const n = list.length;
         const c = CONFIG[n] || CONFIG[10];
         let rolesPool = [...c.r];
@@ -226,15 +229,14 @@
 
         sync({
             names: list.reduce((a, p) => ({...a, [p.id]: p.name}), {}),
-            order, 
-            roles: order.reduce((a, id, i) => ({...a, [id]: roles[i]}), {}),
+            order, roles: order.reduce((a, id, i) => ({...a, [id]: roles[i]}), {}),
             kingIdx: kIdx, ladyIdx: (kIdx - 1 + n) % n, firstLady: (kIdx - 1 + n) % n,
             round: 1, points: [], failedVotes: 0, phase: 'SELECT', team: [],
             votes: {}, missions: {}, showVotes: false
         });
     }
 
-    // --- TOÀN BỘ LOGIC GAME GIỮ NGUYÊN ---
+    // --- CÁC HÀM LOGIC GAME (GIỮ NGUYÊN) ---
     function updateUI(s) {
         state = s;
         document.getElementById('view-lobby').classList.add('hidden');
@@ -286,9 +288,9 @@
         const isRed = ['Assassin','Morgana','Mordred'].includes(myRole);
         let rInfo = `VAI TRÒ: <b class="${isRed?'evil-text':'blue-text'}">${myRole}</b><br>`;
         if(myRole === 'Merlin') {
-            rInfo += `<small class="evil-text">Assassin và Morgana: ${s.order.filter(id => ['Assassin','Morgana'].includes(s.roles[id])).map(id => s.names[id]).join(', ')}</small>`;
+            rInfo += `<small class="evil-text">Assassin & Morgana: ${s.order.filter(id => ['Assassin','Morgana'].includes(s.roles[id])).map(id => s.names[id]).join(', ')}</small>`;
         } else if (myRole === 'Percival') {
-            rInfo += `<small class="blue-text">Merlin và Morgana: ${s.order.filter(id => ['Merlin','Morgana'].includes(s.roles[id])).map(id => s.names[id]).join(', ')}</small>`;
+            rInfo += `<small class="blue-text">Merlin & Morgana: ${s.order.filter(id => ['Merlin','Morgana'].includes(s.roles[id])).map(id => s.names[id]).join(', ')}</small>`;
         } else if(isRed) {
             const evils = s.order.filter(id => id !== myID && ['Assassin','Morgana','Mordred'].includes(s.roles[id])).map(id => {
                 return `<span class="evil-text">${s.names[id]}</span>` + (s.roles[id] === 'Mordred' ? ' (Mordred)' : ' (Đồng bọn)');
@@ -299,13 +301,11 @@
     }
 
     function lock(p) { document.getElementById(p).querySelectorAll('button').forEach(b => b.disabled = true); }
-
     function toggleSelect(id) {
         if(state.team.includes(id)) state.team = state.team.filter(x => x !== id);
         else if(state.team.length < (CONFIG[state.order.length] || CONFIG[10]).q[state.round-1]) state.team.push(id);
         sync(state);
     }
-
     function submitTeam(btn) {
         if(state.team.length !== (CONFIG[state.order.length] || CONFIG[10]).q[state.round-1]) return alert("Chọn đúng số người!");
         btn.classList.add('clicked');
@@ -313,7 +313,6 @@
         else { state.phase = 'VOTE'; state.votes = {}; state.showVotes = false; }
         sync(state);
     }
-
     function castVote(v, btn) {
         btn.classList.add('clicked'); lock('phase-vote');
         state.votes[myID] = v;
@@ -325,7 +324,6 @@
         }
         sync(state);
     }
-
     function castMission(v, btn) {
         btn.classList.add('clicked'); lock('phase-mission');
         state.missions[myID] = v;
@@ -338,7 +336,6 @@
         }
         sync(state);
     }
-
     function handleFlow(btn) {
         btn.classList.add('clicked');
         const bW = state.points.filter(x => x === 'WIN').length;
@@ -349,19 +346,16 @@
         else { proceedRound(); }
         sync(state);
     }
-
     function proceedRound() {
         state.round++; state.kingIdx = (state.kingIdx+1)%state.order.length;
         state.phase = 'SELECT'; state.team = []; state.failedVotes = 0; state.votes = {}; state.showVotes = false;
     }
-
     let ladyT = null;
     function selLady(id) {
         if(id === state.order[state.firstLady]) return alert("Không soi lady đầu!");
         ladyT = id; document.querySelectorAll('#lady-list .selectable-name').forEach(e => e.classList.remove('selected'));
         document.getElementById('l-'+id).classList.add('selected');
     }
-
     function submitLady(btn) {
         if(!ladyT) return alert("Chọn người!");
         btn.classList.add('clicked');
@@ -369,16 +363,13 @@
         alert(`${state.names[ladyT]} là phe: ${isR ? 'ĐỎ' : 'XANH'}`);
         state.ladyIdx = state.order.indexOf(ladyT); proceedRound(); sync(state);
     }
-
     let killT = null;
     function selKill(id) { killT = id; document.querySelectorAll('#assassin-list .selectable-name').forEach(e => e.classList.remove('selected')); document.getElementById('a-'+id).classList.add('selected'); }
-
     function submitAssassin(btn) {
         if(!killT) return alert("Chọn Merlin!");
         state.lastMsg = state.roles[killT] === 'Merlin' ? "<h1 class='red'>GIẾT ĐÚNG MERLIN! ĐỎ THẮNG!</h1>" : "<h1 class='blue-text'>GIẾT SAI! XANH THẮNG!</h1>";
         state.phase = 'RESULT'; sync(state);
     }
-
     function renderCircle() {
         const c = document.getElementById('player-circle'); c.innerHTML = '';
         const n = state.order.length; const myIdx = state.order.indexOf(myID);
@@ -402,7 +393,6 @@
             c.appendChild(div);
         });
     }
-
     function toggleRole() { document.getElementById('role-text').classList.toggle('hidden'); }
 </script>
 </body>
