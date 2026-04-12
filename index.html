@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Avalon Online By Nhat - King & Lady Sync</title>
+    <!-- Thêm các Relay Peer của Gun để tăng độ ổn định -->
     <script src="https://cdn.jsdelivr.net/npm/gun/gun.js"></script>
     <style>
         :root {
@@ -13,7 +14,6 @@
         body { font-family: 'Segoe UI', sans-serif; background: var(--dark); color: white; margin: 0; display: flex; flex-direction: column; align-items: center; }
         .container { width: 100%; max-width: 500px; padding: 15px; box-sizing: border-box; }
         
-        /* Quest Board - Đã xóa số thứ tự */
         .quest-board { display: flex; justify-content: center; gap: 8px; margin: 15px 0; }
         .quest-slot {
             width: 55px; height: 55px; border-radius: 50%; border: 3px solid #555;
@@ -24,7 +24,6 @@
         .quest-slot.fail { background: var(--red) !important; border-color: white; }
         .quest-slot.current { border-color: var(--gold); box-shadow: 0 0 10px var(--gold); }
 
-        /* Vòng tròn & Icon bầu chọn */
         .circle-container { position: relative; width: 320px; height: 320px; margin: 30px auto; border-radius: 50%; }
         .player-node {
             position: absolute; width: 75px; height: 75px; margin: -37px;
@@ -71,7 +70,6 @@
 <body>
 
 <div class="container">
-    <!-- VIEW LOGIN (Sửa đổi nút bấm) -->
     <div id="view-login" class="card">
         <h1 style="color:var(--gold); text-align:center;">AVALON ONLINE BY NHAT</h1>
         <input style="width:90%; padding:12px; margin:10px 0; background:#222; color:white; border-radius:8px; border:1px solid #444;" type="text" id="in-room" placeholder="Mã phòng">
@@ -80,37 +78,31 @@
             <button onclick="handleEntry('join')">VÀO PHÒNG</button>
             <button onclick="handleEntry('create')" style="background:var(--gold); color:black">TẠO MỚI</button>
         </div>
-        <p style="font-size:11px; color:#888; text-align:center; margin-top:10px;">* Tạo mới sẽ xóa toàn bộ dữ liệu cũ của mã phòng này.</p>
+        <p style="font-size:11px; color:#888; text-align:center; margin-top:10px;">* "TẠO MỚI" sẽ reset phòng hiện có.</p>
     </div>
 
-    <!-- VIEW LOBBY -->
     <div id="view-lobby" class="hidden card">
         <h2 id="room-title"></h2>
         <div id="lobby-list" style="text-align: left; margin: 20px 0;"></div>
         <button id="btn-start" class="hidden" style="background:var(--gold); color:black" onclick="startGame()">BẮT ĐẦU</button>
+        <p id="wait-msg" style="text-align:center; color:#888;">Chờ chủ phòng bắt đầu...</p>
     </div>
 
-    <!-- VIEW GAME -->
     <div id="view-game" class="hidden">
         <div class="quest-board" id="quest-board"></div>
         <div style="text-align:center; margin-bottom:10px; font-weight:bold; color:#aaa;" id="failed-bar">Lần bầu chọn: 0/3</div>
-        
         <div class="circle-container" id="player-circle"></div>
-
         <div class="card">
             <div id="role-area">
                 <div id="role-text" class="hidden" style="background:#000; padding:15px; border:2px solid var(--gold); margin-bottom:10px;"></div>
                 <button onclick="toggleRole()" style="background:#444;">Xem vai trò</button>
             </div>
-
             <h3 id="game-status" style="color:var(--gold); text-align:center;"></h3>
-
             <div id="phase-select" class="hidden">
                 <p>Vua chọn <span id="num-needed"></span> người:</p>
                 <div id="select-list"></div>
                 <button id="btn-submit-team" onclick="submitTeam(this)" style="background:var(--gold); color:black">XÁC NHẬN ĐỘI</button>
             </div>
-
             <div id="phase-vote" class="hidden">
                 <p>Biểu quyết cho đội này?</p>
                 <div style="display:flex; gap:10px;">
@@ -118,25 +110,21 @@
                     <button id="btn-vote-no" onclick="castVote('NO', this)" style="background:#c0392b">NO (✖)</button>
                 </div>
             </div>
-
             <div id="phase-mission" class="hidden">
                 <p>Thực hiện nhiệm vụ bí mật:</p>
                 <button id="btn-ms-win" onclick="castMission('WIN', this)">THÀNH CÔNG</button>
                 <button id="btn-ms-fail" onclick="castMission('FAIL', this)" style="background:var(--red)">THẤT BẠI</button>
             </div>
-
             <div id="phase-lady" class="hidden">
                 <p>Lady of the Lake, chọn 1 người để soi:</p>
                 <div id="lady-list"></div>
                 <button id="btn-lady" onclick="submitLady(this)" style="background:var(--gold); color:black">SOI VAI TRÒ</button>
             </div>
-
             <div id="phase-assassin" class="hidden">
                 <p class="evil-text">CHỌN NGƯỜI LÀ MERLIN ĐỂ ÁM SÁT</p>
                 <div id="assassin-list"></div>
                 <button id="btn-assassin" onclick="submitAssassin(this)" style="background:var(--red)">RA TAY</button>
             </div>
-
             <div id="phase-result" class="hidden">
                 <h2 id="result-msg" style="text-align:center;"></h2>
                 <button id="btn-next" onclick="handleFlow(this)" style="background:var(--gold); color:black">TIẾP TỤC</button>
@@ -146,9 +134,16 @@
 </div>
 
 <script>
-    const gun = Gun(['https://gun-manhattan.herokuapp.com/gun']);
+    // Khởi tạo Gun với nhiều peer dự phòng
+    const gun = Gun([
+        'https://gun-manhattan.herokuapp.com/gun',
+        'https://relay.art-v7.link/gun',
+        'https://gun-server.com/gun'
+    ]);
+    
     let myID = 'p_' + Math.random().toString(36).substr(2, 5);
     let myName = '', roomID = '', state = null;
+    let allPlayers = {}; // Đồng bộ danh sách người chơi online
 
     const CONFIG = {
         7: { q: [2,3,3,4,4], r: ['Assassin','Morgana','Mordred','Merlin','Percival','Villager','Villager'] },
@@ -157,68 +152,79 @@
         10: { q: [3,4,4,5,5], r: ['Assassin','Morgana','Mordred','Merlin','Percival','Villager','Villager','Villager','Villager','Villager'] }
     };
 
+    // Hàm đồng bộ Game State
     function sync(data) {
-        const str = JSON.stringify(data);
-        localStorage.setItem('avalon_pro_' + roomID, str);
-        gun.get('avalon_v5_' + roomID).put(str);
-        updateUI(data);
+        gun.get('avalon_v5_' + roomID).get('state').put(JSON.stringify(data));
     }
 
+    // Hàm xóa dữ liệu phòng
     function cleanup() {
-        localStorage.removeItem('avalon_pro_' + roomID);
-        localStorage.removeItem('avalon_players_' + roomID);
-        gun.get('avalon_v5_' + roomID).put(null);
+        gun.get('avalon_v5_' + roomID).get('state').put(null);
+        gun.get('avalon_v5_' + roomID).get('players').put(null);
     }
 
-    // --- XỬ LÝ ĐĂNG NHẬP MỚI ---
     function handleEntry(mode) {
-        roomID = document.getElementById('in-room').value.trim();
+        roomID = document.getElementById('in-room').value.trim().toUpperCase();
         myName = document.getElementById('in-name').value.trim();
         if(!roomID || !myName) return alert("Vui lòng điền đủ!");
 
-        if (mode === 'create') {
-            cleanup(); // Xóa sạch dữ liệu cũ nếu chọn tạo mới
-        }
-        
+        if (mode === 'create') cleanup();
         joinGame();
     }
 
-    window.onstorage = (e) => { if(e.key === 'avalon_pro_' + roomID) updateUI(JSON.parse(e.newValue)); };
-
     function joinGame() {
-        let ps = JSON.parse(localStorage.getItem('avalon_players_' + roomID) || "[]");
-        ps = ps.filter(p => p.id !== myID);
-        ps.push({id: myID, name: myName, t: Date.now()});
-        localStorage.setItem('avalon_players_' + roomID, JSON.stringify(ps));
-        gun.get('avalon_v5_' + roomID).on(d => { if(d) updateUI(JSON.parse(d)); });
+        // 1. Lưu thông tin cá nhân lên Gun
+        gun.get('avalon_v5_' + roomID).get('players').get(myID).put(myName);
+
+        // 2. Lắng nghe danh sách người chơi
+        gun.get('avalon_v5_' + roomID).get('players').map().on((name, id) => {
+            if (name) allPlayers[id] = name;
+            else delete allPlayers[id];
+            updateLobbyUI();
+        });
+
+        // 3. Lắng nghe trạng thái Game
+        gun.get('avalon_v5_' + roomID).get('state').on(d => {
+            if(d) updateUI(JSON.parse(d));
+        });
+
         document.getElementById('view-login').classList.add('hidden');
         document.getElementById('view-lobby').classList.remove('hidden');
         document.getElementById('room-title').innerText = "Phòng: " + roomID;
-        setInterval(() => {
-            const list = JSON.parse(localStorage.getItem('avalon_players_' + roomID) || "[]");
-            document.getElementById('lobby-list').innerHTML = list.map(p => `• <b>${p.name}</b>`).join('<br>');
-            if(list.length >= 7 && list[0].id === myID) document.getElementById('btn-start').classList.remove('hidden');
-        }, 1000);
+    }
+
+    function updateLobbyUI() {
+        const ids = Object.keys(allPlayers);
+        document.getElementById('lobby-list').innerHTML = ids.map(id => `• <b>${allPlayers[id]}</b> ${id === myID ? '(Bạn)' : ''}`).join('<br>');
+        
+        // Người đầu tiên vào phòng là chủ phòng (được hiện nút Start)
+        const isHost = ids.sort()[0] === myID;
+        if(ids.length >= 7 && isHost) {
+            document.getElementById('btn-start').classList.remove('hidden');
+            document.getElementById('wait-msg').classList.add('hidden');
+        }
     }
 
     function startGame() {
-        const ps = JSON.parse(localStorage.getItem('avalon_players_' + roomID));
-        const n = ps.length;
+        const ids = Object.keys(allPlayers).sort(() => Math.random() - 0.5);
+        const n = ids.length;
         const c = CONFIG[n] || CONFIG[10];
         let rolesPool = [...c.r];
         if (n > 10) { for(let i=10; i<n; i++) rolesPool.push('Villager'); }
         const roles = rolesPool.sort(() => Math.random() - 0.5);
-        const order = ps.map(p => p.id).sort(() => Math.random() - 0.5);
+        
         const kIdx = Math.floor(Math.random() * n);
         sync({
-            names: ps.reduce((a, p) => ({...a, [p.id]: p.name}), {}),
-            order, roles: order.reduce((a, id, i) => ({...a, [id]: roles[i]}), {}),
+            names: allPlayers,
+            order: ids,
+            roles: ids.reduce((a, id, i) => ({...a, [id]: roles[i]}), {}),
             kingIdx: kIdx, ladyIdx: (kIdx - 1 + n) % n, firstLady: (kIdx - 1 + n) % n,
             round: 1, points: [], failedVotes: 0, phase: 'SELECT', team: [],
             votes: {}, missions: {}, showVotes: false
         });
     }
 
+    // --- GIỮ NGUYÊN TOÀN BỘ LOGIC UPDATE UI VÀ GAMEPLAY BÊN DƯỚI ---
     function updateUI(s) {
         state = s;
         document.getElementById('view-lobby').classList.add('hidden');
@@ -305,7 +311,7 @@
             state.showVotes = true;
             const yes = Object.values(state.votes).filter(x => x === 'YES').length;
             if(yes > state.order.length / 2) { state.phase = 'MISSION'; state.missions = {}; }
-            else { state.failedVotes++; state.kingIdx = (state.kingIdx+1)%state.order.length; state.phase = 'SELECT'; state.team = []; alert("Team bị bác bỏ! Chuyển Vua."); }
+            else { state.failedVotes++; state.kingIdx = (state.kingIdx+1)%state.order.length; state.phase = 'SELECT'; state.team = []; }
         }
         sync(state);
     }
@@ -327,7 +333,7 @@
         btn.classList.add('clicked');
         const bW = state.points.filter(x => x === 'WIN').length;
         const rW = state.points.filter(x => x === 'FAIL').length;
-        if(rW >= 3) { state.lastMsg = "<h1 class='red'>PHE ĐỎ THẮNG!</h1>"; sync(state); setTimeout(cleanup, 10000); return; }
+        if(rW >= 3) { state.lastMsg = "<h1 class='red'>PHE ĐỎ THẮNG!</h1>"; sync(state); return; }
         if(bW >= 3) { state.phase = 'ASSASSIN'; sync(state); return; }
         if(state.round >= 2 && state.round <= 4) { state.phase = 'LADY'; ladyT = null; }
         else { proceedRound(); }
@@ -360,7 +366,7 @@
     function submitAssassin(btn) {
         if(!killT) return alert("Chọn Merlin!");
         state.lastMsg = state.roles[killT] === 'Merlin' ? "<h1 class='red'>GIẾT ĐÚNG MERLIN! ĐỎ THẮNG!</h1>" : "<h1 class='blue-text'>GIẾT SAI! XANH THẮNG!</h1>";
-        state.phase = 'RESULT'; sync(state); setTimeout(cleanup, 10000);
+        state.phase = 'RESULT'; sync(state);
     }
 
     function renderCircle() {
