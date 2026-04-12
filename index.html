@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Avalon Online By Nhat - V13 Reset Pro</title>
+    <title>Avalon Online By Nhat - V14 Final</title>
     <script src="https://cdn.jsdelivr.net/npm/gun/gun.js"></script>
     <style>
         :root {
@@ -62,13 +62,14 @@
 <div class="container">
     <div id="view-login" class="card">
         <h1 style="color:var(--gold); text-align:center;">AVALON BY NHAT</h1>
-        <input style="width:94%; padding:12px; margin:10px 0; background:#222; color:white; border-radius:8px; border:1px solid #444;" type="text" id="in-room" placeholder="Mã phòng">
+        <div id="net-indicator" style="text-align:center; font-size:10px; color:#ff4d4d; margin-bottom:10px;">● Đang kết nối server...</div>
+        <input style="width:94%; padding:12px; margin:10px 0; background:#222; color:white; border-radius:8px; border:1px solid #444;" type="text" id="in-room" placeholder="Mã phòng (Ví dụ: 1)">
         <input style="width:94%; padding:12px; margin:10px 0; background:#222; color:white; border-radius:8px; border:1px solid #444;" type="text" id="in-name" placeholder="Tên của bạn">
         <div style="display:flex; gap:10px;">
             <button onclick="handleEntry('join')">VÀO PHÒNG</button>
             <button onclick="handleEntry('create')" style="background:var(--gold); color:black">TẠO MỚI</button>
         </div>
-        <p id="net-status" style="font-size:10px; color:#555; text-align:center;">Phiên bản V13: Kết nối sạch.</p>
+        <p style="font-size:10px; color:#666; text-align:center; margin-top:10px;">Bản V14: Tự động dọn dẹp dữ liệu cũ khi Tạo mới.</p>
     </div>
 
     <div id="view-lobby" class="hidden card">
@@ -124,58 +125,69 @@
 </div>
 
 <script>
+    // Dùng 3 server để đảm bảo thông mạng tuyệt đối
     const gun = Gun({
-        peers: ['https://gun-manhattan.herokuapp.com/gun', 'https://relay.art-v7.link/gun']
+        peers: [
+            'https://gun-manhattan.herokuapp.com/gun',
+            'https://relay.art-v7.link/gun',
+            'https://gun-server.com/gun'
+        ]
     });
 
     let myID = 'u' + Math.random().toString(36).substr(2, 5);
-    let myName = '', roomName = '', activeRoomKey = '', state = null;
+    let myName = '', roomID = '', state = null;
     let playersLive = {};
+    let resetTime = 0;
+
+    gun.on('hi', () => {
+        document.getElementById('net-indicator').innerText = "● Đã kết nối server";
+        document.getElementById('net-indicator').style.color = "#27ae60";
+    });
 
     function handleEntry(mode) {
-        roomName = document.getElementById('in-room').value.trim().toUpperCase();
+        const raw = document.getElementById('in-room').value.trim().toUpperCase();
         myName = document.getElementById('in-name').value.trim();
-        if(!roomName || !myName) return alert("Nhập đủ thông tin!");
+        if(!raw || !myName) return alert("Nhập đủ thông tin!");
         
-        const masterKey = "NHAT_MASTER_INDEX_" + roomName;
+        roomID = "AVALON_V14_SYNC_" + raw;
+        const room = gun.get(roomID);
 
         if (mode === 'create') {
-            // Tạo một RoomKey hoàn toàn mới dựa trên thời gian thực
-            activeRoomKey = "ROOM_" + roomName + "_" + Date.now();
-            // Phát tín hiệu chuyển hướng cho phòng này
-            gun.get(masterKey).put({ current: activeRoomKey });
-            setTimeout(() => startSession(), 500);
+            resetTime = Date.now();
+            room.get('meta').put({ resetAt: resetTime });
+            // Ghi đè trạng thái game cũ
+            room.get('state').put(null);
+            setTimeout(startSession, 500);
         } else {
-            // Tìm RoomKey đang hoạt động mới nhất
-            gun.get(masterKey).on(d => {
-                if (d && d.current) {
-                    activeRoomKey = d.current;
-                    startSession();
-                } else {
-                    alert("Phòng không tồn tại hoặc đã bị xóa!");
-                }
+            room.get('meta').once(d => {
+                resetTime = d ? d.resetAt : 0;
+                startSession();
             });
         }
     }
 
     function startSession() {
-        const room = gun.get(activeRoomKey);
-        
-        // Nhịp đập báo online (2 giây/lần)
-        setInterval(() => {
-            room.get('players').get(myID).put({id: myID, name: myName, t: Date.now()});
-        }, 2000);
+        const room = gun.get(roomID);
 
-        // Theo dõi danh sách lobby
+        // Đăng ký bản thân với thời gian gia nhập
+        const joinT = Date.now();
+        setInterval(() => {
+            room.get('players').get(myID).put({id: myID, name: myName, t: Date.now(), joinedAt: joinT});
+        }, 1500);
+
+        // Lắng nghe danh sách lobby
         room.get('players').map().on((data, id) => {
             if (data && data.name) {
-                if (Date.now() - data.t < 8000) playersLive[id] = data;
-                else delete playersLive[id];
+                // ĐIỀU KIỆN QUAN TRỌNG: Chỉ hiện người vào sau mốc Reset và vẫn đang online
+                if (data.joinedAt >= resetTime && (Date.now() - data.t < 10000)) {
+                    playersLive[id] = data;
+                } else {
+                    delete playersLive[id];
+                }
                 updateLobbyUI();
             }
         });
 
-        // Theo dõi Game State
         room.get('state').on(d => {
             if (d) {
                 try {
@@ -187,34 +199,34 @@
 
         document.getElementById('view-login').classList.add('hidden');
         document.getElementById('view-lobby').classList.remove('hidden');
-        document.getElementById('room-title').innerText = "PHÒNG: " + roomName;
+        document.getElementById('room-title').innerText = "PHÒNG: " + roomID.replace("AVALON_V14_SYNC_", "");
     }
 
     function updateLobbyUI() {
-        const list = Object.values(playersLive).sort((a, b) => a.t - b.t);
+        const list = Object.values(playersLive).sort((a, b) => a.joinedAt - b.joinedAt);
         const lobbyDiv = document.getElementById('lobby-list');
         lobbyDiv.innerHTML = list.map((p, i) => `
-            <div style="padding:12px; border-bottom:1px solid #333; display:flex; justify-content:space-between;">
-                <span>${i === 0 ? '👑' : '👤'} <b>${p.name}</b> ${p.id === myID ? '<small>(Bạn)</small>' : ''}</span>
+            <div style="padding:12px; border-bottom:1px solid #333;">
+                ${i === 0 ? '👑' : '👤'} <b>${p.name}</b> ${p.id === myID ? '<small>(Bạn)</small>' : ''}
             </div>
         `).join('');
 
         const isHost = list.length > 0 && list[0].id === myID;
         if (list.length >= 7) {
-            document.getElementById('wait-msg').innerText = "Phòng đã sẵn sàng!";
+            document.getElementById('wait-msg').innerText = "Đã đủ người!";
             if (isHost) document.getElementById('btn-start').classList.remove('hidden');
         } else {
-            document.getElementById('wait-msg').innerText = `Chờ đủ 7 người (Hiện có: ${list.length})`;
+            document.getElementById('wait-msg').innerText = `Đang chờ... (${list.length}/7)`;
             document.getElementById('btn-start').classList.add('hidden');
         }
     }
 
     function sync(data) {
-        if(!activeRoomKey || !data) return;
-        gun.get(activeRoomKey).get('state').put(JSON.stringify(data));
+        if(!roomID || !data) return;
+        gun.get(roomID).get('state').put(JSON.stringify(data));
     }
 
-    // --- GAME LOGIC (GIỮ NGUYÊN) ---
+    // --- GAME LOGIC (GIỮ NGUYÊN 100% THEO CHỐT) ---
     const CONFIG = {
         7: { q: [2,3,3,4,4], r: ['Assassin','Morgana','Mordred','Merlin','Percival','Villager','Villager'] },
         8: { q: [3,4,4,5,5], r: ['Assassin','Morgana','Mordred','Merlin','Percival','Villager','Villager','Villager'] },
@@ -223,7 +235,7 @@
     };
 
     function startGame() {
-        const list = Object.values(playersLive).sort((a, b) => a.t - b.t);
+        const list = Object.values(playersLive).sort((a, b) => a.joinedAt - b.joinedAt);
         const n = list.length;
         const c = CONFIG[n] || CONFIG[10];
         const roles = [...c.r].sort(() => Math.random() - 0.5);
