@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Avalon Online By Nhat - V12 Super Sync</title>
+    <title>Avalon Online By Nhat - V13 Reset Pro</title>
     <script src="https://cdn.jsdelivr.net/npm/gun/gun.js"></script>
     <style>
         :root {
@@ -60,27 +60,24 @@
 <body>
 
 <div class="container">
-    <!-- VIEW LOGIN -->
     <div id="view-login" class="card">
-        <h1 style="color:var(--gold); text-align:center;">AVALON ONLINE BY NHAT</h1>
+        <h1 style="color:var(--gold); text-align:center;">AVALON BY NHAT</h1>
         <input style="width:94%; padding:12px; margin:10px 0; background:#222; color:white; border-radius:8px; border:1px solid #444;" type="text" id="in-room" placeholder="Mã phòng">
         <input style="width:94%; padding:12px; margin:10px 0; background:#222; color:white; border-radius:8px; border:1px solid #444;" type="text" id="in-name" placeholder="Tên của bạn">
         <div style="display:flex; gap:10px;">
             <button onclick="handleEntry('join')">VÀO PHÒNG</button>
             <button onclick="handleEntry('create')" style="background:var(--gold); color:black">TẠO MỚI</button>
         </div>
-        <p id="net-status" style="font-size:10px; color:#666; text-align:center; margin-top:10px;">Nếu phòng bị kẹt, hãy bấm "TẠO MỚI" để reset.</p>
+        <p id="net-status" style="font-size:10px; color:#555; text-align:center;">Phiên bản V13: Kết nối sạch.</p>
     </div>
 
-    <!-- VIEW LOBBY -->
     <div id="view-lobby" class="hidden card">
-        <h2 id="room-title" style="text-align:center; color:var(--gold);"></h2>
+        <h2 id="room-title" style="text-align:center; color:var(--gold); margin:0;"></h2>
         <div id="lobby-list" style="margin: 20px 0; border-top: 1px solid #333; padding-top: 10px;"></div>
-        <p id="wait-msg" style="text-align:center; color:#888; font-size: 13px;"></p>
-        <button id="btn-start" class="hidden" style="background:var(--gold); color:black" onclick="startGame()">BẮT ĐẦU GAME</button>
+        <p id="wait-msg" style="text-align:center; color:#888; font-size:13px;"></p>
+        <button id="btn-start" class="hidden" style="background:var(--gold); color:black" onclick="startGame()">BẮT ĐẦU</button>
     </div>
 
-    <!-- VIEW GAME -->
     <div id="view-game" class="hidden">
         <div class="quest-board" id="quest-board"></div>
         <div style="text-align:center; margin-bottom:10px; font-weight:bold; color:#aaa;" id="failed-bar">Lần bầu chọn: 0/3</div>
@@ -132,30 +129,38 @@
     });
 
     let myID = 'u' + Math.random().toString(36).substr(2, 5);
-    let myName = '', roomKey = '', state = null;
+    let myName = '', roomName = '', activeRoomKey = '', state = null;
     let playersLive = {};
 
     function handleEntry(mode) {
-        const raw = document.getElementById('in-room').value.trim().toUpperCase();
+        roomName = document.getElementById('in-room').value.trim().toUpperCase();
         myName = document.getElementById('in-name').value.trim();
-        if(!raw || !myName) return alert("Nhập đủ thông tin!");
+        if(!roomName || !myName) return alert("Nhập đủ thông tin!");
         
-        roomKey = "NHAT_AVALON_V12_" + raw;
+        const masterKey = "NHAT_MASTER_INDEX_" + roomName;
 
         if (mode === 'create') {
-            // Force reset toàn bộ data phòng
-            gun.get(roomKey).put(null);
-            gun.get(roomKey).get('players').put(null);
-            gun.get(roomKey).get('state').put(null);
-            setTimeout(connect, 600);
+            // Tạo một RoomKey hoàn toàn mới dựa trên thời gian thực
+            activeRoomKey = "ROOM_" + roomName + "_" + Date.now();
+            // Phát tín hiệu chuyển hướng cho phòng này
+            gun.get(masterKey).put({ current: activeRoomKey });
+            setTimeout(() => startSession(), 500);
         } else {
-            connect();
+            // Tìm RoomKey đang hoạt động mới nhất
+            gun.get(masterKey).on(d => {
+                if (d && d.current) {
+                    activeRoomKey = d.current;
+                    startSession();
+                } else {
+                    alert("Phòng không tồn tại hoặc đã bị xóa!");
+                }
+            });
         }
     }
 
-    function connect() {
-        const room = gun.get(roomKey);
-
+    function startSession() {
+        const room = gun.get(activeRoomKey);
+        
         // Nhịp đập báo online (2 giây/lần)
         setInterval(() => {
             room.get('players').get(myID).put({id: myID, name: myName, t: Date.now()});
@@ -176,13 +181,13 @@
                 try {
                     state = JSON.parse(d);
                     updateUI(state);
-                } catch(e) { console.log("Data sync error, waiting..."); }
+                } catch(e) {}
             }
         });
 
         document.getElementById('view-login').classList.add('hidden');
         document.getElementById('view-lobby').classList.remove('hidden');
-        document.getElementById('room-title').innerText = "PHÒNG: " + roomKey.split('_').pop();
+        document.getElementById('room-title').innerText = "PHÒNG: " + roomName;
     }
 
     function updateLobbyUI() {
@@ -195,24 +200,21 @@
         `).join('');
 
         const isHost = list.length > 0 && list[0].id === myID;
-        const btnStart = document.getElementById('btn-start');
-        const waitMsg = document.getElementById('wait-msg');
-
         if (list.length >= 7) {
-            waitMsg.innerText = "Phòng đã đủ người chơi!";
-            if (isHost) btnStart.classList.remove('hidden');
+            document.getElementById('wait-msg').innerText = "Phòng đã sẵn sàng!";
+            if (isHost) document.getElementById('btn-start').classList.remove('hidden');
         } else {
-            waitMsg.innerText = `Cần đủ 7 người (Hiện có: ${list.length})`;
-            btnStart.classList.add('hidden');
+            document.getElementById('wait-msg').innerText = `Chờ đủ 7 người (Hiện có: ${list.length})`;
+            document.getElementById('btn-start').classList.add('hidden');
         }
     }
 
     function sync(data) {
-        if(!roomKey || !data) return;
-        gun.get(roomKey).get('state').put(JSON.stringify(data));
+        if(!activeRoomKey || !data) return;
+        gun.get(activeRoomKey).get('state').put(JSON.stringify(data));
     }
 
-    // --- GAME LOGIC ---
+    // --- GAME LOGIC (GIỮ NGUYÊN) ---
     const CONFIG = {
         7: { q: [2,3,3,4,4], r: ['Assassin','Morgana','Mordred','Merlin','Percival','Villager','Villager'] },
         8: { q: [3,4,4,5,5], r: ['Assassin','Morgana','Mordred','Merlin','Percival','Villager','Villager','Villager'] },
@@ -226,7 +228,6 @@
         const c = CONFIG[n] || CONFIG[10];
         const roles = [...c.r].sort(() => Math.random() - 0.5);
         const order = list.map(p => p.id).sort(() => Math.random() - 0.5);
-        
         sync({
             names: list.reduce((a, p) => ({...a, [p.id]: p.name}), {}),
             order, roles: order.reduce((a, id, i) => ({...a, [id]: roles[i]}), {}),
@@ -240,7 +241,6 @@
         if (!s || !s.order) return;
         document.getElementById('view-lobby').classList.add('hidden');
         document.getElementById('view-game').classList.remove('hidden');
-        
         const qC = (CONFIG[s.order.length] || CONFIG[10]).q;
         document.getElementById('quest-board').innerHTML = qC.map((num, i) => {
             let cls = (s.round === i+1) ? 'current' : '';
@@ -248,16 +248,13 @@
             if(s.points[i] === 'FAIL') cls = 'fail';
             return `<div class="quest-slot ${cls}"><small>${num}</small></div>`;
         }).join('');
-        
         document.getElementById('failed-bar').innerText = `Lần bầu chọn vòng này: ${s.failedVotes}/3`;
         renderCircle();
         document.getElementById('game-status').innerText = `Vua: ${s.names[s.order[s.kingIdx]]}`;
-
         ['phase-select','phase-vote','phase-mission','phase-lady','phase-assassin','phase-result'].forEach(p => {
             document.getElementById(p).classList.add('hidden');
             document.getElementById(p).querySelectorAll('button').forEach(b => { b.disabled = false; b.classList.remove('clicked'); });
         });
-
         if(s.phase === 'SELECT' && myID === s.order[s.kingIdx]) {
             document.getElementById('phase-select').classList.remove('hidden');
             document.getElementById('num-needed').innerText = qC[s.round-1];
