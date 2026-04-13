@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Avalon V23 - Nhat's Server</title>
+    <title>Avalon V24 - Group Nhat Only</title>
     <script src="https://cdn.jsdelivr.net/npm/gun/gun.js"></script>
     <style>
         :root {
@@ -12,22 +12,20 @@
         }
         body { font-family: 'Segoe UI', sans-serif; background: var(--dark); color: white; margin: 0; display: flex; flex-direction: column; align-items: center; }
         .container { width: 100%; max-width: 500px; padding: 15px; box-sizing: border-box; }
-        
         .quest-board { display: flex; justify-content: center; gap: 8px; margin: 15px 0; }
         .quest-slot {
-            width: 55px; height: 55px; border-radius: 50%; border: 3px solid #555;
+            width: 50px; height: 50px; border-radius: 50%; border: 3px solid #555;
             display: flex; flex-direction: column; align-items: center; justify-content: center;
-            font-size: 16px; font-weight: bold; background: #222; position: relative;
+            font-size: 14px; font-weight: bold; background: #222; position: relative;
         }
         .quest-slot.win { background: var(--blue) !important; border-color: white; }
         .quest-slot.fail { background: var(--red) !important; border-color: white; }
         .quest-slot.current { border-color: var(--gold); box-shadow: 0 0 10px var(--gold); }
-
         .circle-container { position: relative; width: 320px; height: 320px; margin: 30px auto; border-radius: 50%; }
         .player-node {
-            position: absolute; width: 75px; height: 75px; margin: -37px;
+            position: absolute; width: 70px; height: 70px; margin: -35px;
             background: #333; border-radius: 50%; display: flex; align-items: center;
-            justify-content: center; font-size: 12px; border: 3px solid var(--other-border);
+            justify-content: center; font-size: 11px; border: 3px solid var(--other-border);
             transition: 0.3s; box-sizing: border-box; font-weight: bold; text-align: center;
         }
         .player-node.me { border-color: var(--me-border); z-index: 5; }
@@ -35,14 +33,12 @@
         .player-node.king::after { content: '👑'; position: absolute; top: -18px; font-size: 20px; }
         .player-node.lady { border-color: var(--lady-border); box-shadow: 0 0 10px var(--blue); }
         .player-node.lady::after { content: '💧'; position: absolute; bottom: -18px; font-size: 20px; }
-        
         .player-node.king-lady {
             border: 4px solid transparent;
             background-image: linear-gradient(#333, #333), conic-gradient(var(--gold) 50%, var(--lady-border) 0);
             background-origin: border-box; background-clip: content-box, border-box;
             box-shadow: 0 0 15px var(--gold), 0 0 10px var(--blue);
         }
-        
         .vote-badge {
             position: absolute; top: -10px; right: -10px; width: 25px; height: 25px;
             border-radius: 50%; display: flex; align-items: center; justify-content: center;
@@ -50,13 +46,8 @@
         }
         .vote-yes { background: #27ae60; color: white; }
         .vote-no { background: #c0392b; color: white; }
-
-        .selectable-name {
-            padding: 12px; background: #2a2a2a; margin: 5px 0; border-radius: 8px;
-            cursor: pointer; font-weight: bold; border: 2px solid transparent;
-        }
+        .selectable-name { padding: 12px; background: #2a2a2a; margin: 5px 0; border-radius: 8px; cursor: pointer; font-weight: bold; border: 2px solid transparent; }
         .selectable-name.selected { background: var(--blue); border-color: white; }
-
         .card { background: var(--card); padding: 20px; border-radius: 15px; width: 100%; margin-bottom: 20px; box-shadow: 0 5px 15px rgba(0,0,0,0.5); }
         button { width: 100%; padding: 15px; margin: 10px 0; border-radius: 8px; border: none; font-size: 16px; font-weight: bold; cursor: pointer; background: var(--blue); color: white; }
         button:disabled { background: #444 !important; opacity: 0.6; }
@@ -69,28 +60,31 @@
 <body>
 
 <div class="container">
+    <!-- MÀN HÌNH ĐĂNG NHẬP -->
     <div id="view-login" class="card">
         <h1 style="color:var(--gold); text-align:center; margin-bottom:0;">AVALON ONLINE</h1>
-        <p style="text-align:center; color:var(--gold); font-size:12px; font-weight:bold; margin-top:5px;">VERSION V23 - PRIVATE SERVER</p>
-        <p id="net-status" style="text-align:center; font-size:10px; color:#888; margin-bottom:20px;">● Đang kết nối mạng...</p>
+        <p style="text-align:center; color:var(--gold); font-size:12px; font-weight:bold; margin-top:5px;">VERSION V24</p>
+        <p id="net-status" style="text-align:center; font-size:10px; color:#888;">Đang kết nối Cloud...</p>
         
-        <input style="width:94%; padding:15px; margin:10px 0; background:#222; color:white; border-radius:8px; border:1px solid #444; font-size:18px; text-align:center;" type="text" id="in-name" placeholder="Nhập tên của bạn">
+        <input style="width:94%; padding:15px; margin:20px 0; background:#222; color:white; border-radius:8px; border:1px solid #444; font-size:18px; text-align:center;" type="text" id="in-name" placeholder="Nhập tên của bạn">
+        
         <button onclick="joinGame()">VÀO PHÒNG CHƠI</button>
     </div>
 
+    <!-- MÀN HÌNH CHỜ -->
     <div id="view-lobby" class="hidden card">
-        <h2 style="text-align:center; color:var(--gold);">SẢNH ĐỢI</h2>
-        <div id="lobby-list" style="margin: 20px 0; border-top: 1px solid #333; padding-top: 10px;"></div>
+        <h2 style="text-align:center; color:var(--gold);">SẢNH CHỜ CHUNG</h2>
+        <div id="lobby-list" style="margin: 20px 0; border-top: 1px solid #333; padding-top: 10px; color: white;"></div>
         
         <div id="host-controls" class="hidden">
-            <button id="btn-start" style="background:var(--gold); color:black" onclick="startGame()">BẮT ĐẦU VÁN MỚI</button>
-            <button onclick="hardReset()" style="background:#444; font-size:11px;">RESET SERVER (NẾU LỖI)</button>
+            <button id="btn-start" style="background:var(--gold); color:black" onclick="startGame()">BẮT ĐẦU GAME</button>
+            <button onclick="resetRoom()" style="background:#444; font-size:11px;">RESET SERVER</button>
         </div>
         
         <p id="wait-msg" style="text-align:center; color:#888; font-size:13px;">Đang tìm các thiết bị khác...</p>
     </div>
 
-    <!-- VIEW GAME (GIỮ NGUYÊN GIAO DIỆN CỦA BẠN) -->
+    <!-- MÀN HÌNH GAME (GIỮ NGUYÊN BẢN GỐC) -->
     <div id="view-game" class="hidden">
         <div class="quest-board" id="quest-board"></div>
         <div style="text-align:center; margin-bottom:10px; font-weight:bold; color:#aaa;" id="failed-bar">Lần bầu chọn: 0/3</div>
@@ -131,19 +125,19 @@
             <div id="phase-result" class="hidden">
                 <h2 id="result-msg" style="text-align:center;"></h2>
                 <button id="btn-next" onclick="handleFlow(this)" style="background:var(--gold); color:black">TIẾP TỤC</button>
-                <button onclick="location.reload()" style="background:#444; margin-top:10px;">VỀ SẢNH ĐỢI</button>
+                <button onclick="location.reload()" style="background:#444; margin-top:10px;">VỀ SẢNH CHỜ</button>
             </div>
         </div>
     </div>
 </div>
 
 <script>
-    // Server duy nhất cho nhóm của Nhat
-    const SHARED_SERVER_KEY = "AVALON_NHAT_PRIVATE_GROUP_V23";
+    // Dùng 1 địa chỉ duy nhất để tất cả các thiết bị tự động vào chung 1 phòng
+    const SHARED_ID = "AVALON_NHAT_GROUP_V24_SYNC";
     const gun = Gun({
         peers: [
-            'https://gun-manhattan.herokuapp.com/gun',
-            'https://relay.art-v7.link/gun'
+            'https://relay.art-v7.link/gun',
+            'https://gun-manhattan.herokuapp.com/gun'
         ]
     });
 
@@ -151,31 +145,31 @@
     let myName = '', state = null, playersLive = {};
 
     gun.on('hi', () => {
-        document.getElementById('net-status').innerText = "● Máy chủ: Đã sẵn sàng";
+        document.getElementById('net-status').innerText = "● Đã kết nối server";
         document.getElementById('net-status').style.color = "#27ae60";
     });
 
     function joinGame() {
         myName = document.getElementById('in-name').value.trim();
-        if(!myName) return alert("Nhập tên!");
+        if(!myName) return alert("Vui lòng nhập tên!");
 
         document.getElementById('view-login').classList.add('hidden');
         document.getElementById('view-lobby').classList.remove('hidden');
 
-        // Phân quyền cho Nhat
+        // Tự động nhận diện Nhat làm Host
         if(myName.toLowerCase() === 'nhat') {
             document.getElementById('host-controls').classList.remove('hidden');
         }
 
-        const room = gun.get(SHARED_SERVER_KEY);
+        const room = gun.get(SHARED_ID);
         const joinT = Date.now();
 
-        // Nhịp đập báo online cực mạnh (1s/lần)
+        // Nhịp đập báo online (1s/lần) để máy khác thấy mình
         setInterval(() => {
             room.get('players').get(myID).put({id: myID, name: myName, t: Date.now(), j: joinT});
         }, 1000);
 
-        // Lắng nghe người chơi khác
+        // Lắng nghe người chơi khác từ Gun
         room.get('players').map().on((data, id) => {
             if (data && data.name && (Date.now() - data.t < 10000)) {
                 playersLive[id] = data;
@@ -185,37 +179,39 @@
             renderLobby();
         });
 
-        // Lắng nghe dữ liệu Game
+        // Lắng nghe dữ liệu Game từ Gun
         room.get('state').on(d => {
-            if(d) updateUI(JSON.parse(d));
+            if(d) {
+                const s = JSON.parse(d);
+                if(s) updateUI(s);
+            }
         });
     }
 
     function renderLobby() {
         const list = Object.values(playersLive).sort((a, b) => a.j - b.j);
         document.getElementById('lobby-list').innerHTML = list.map(p => `
-            <div style="padding:12px; border-bottom:1px solid #333;">
+            <div style="padding:10px; border-bottom:1px solid #333;">
                 ${p.name.toLowerCase() === 'nhat' ? '👑' : '👤'} <b>${p.name}</b> ${p.id === myID ? '<small>(Bạn)</small>' : ''}
             </div>
         `).join('');
-        
-        const count = list.length;
-        document.getElementById('wait-msg').innerText = `Hiện có: ${count}/12 người.`;
+        document.getElementById('wait-msg').innerText = `Hiện có: ${list.length}/12 người.`;
     }
 
-    function hardReset() {
-        if(!confirm("Xóa sạch server để reset?")) return;
-        gun.get(SHARED_SERVER_KEY).put(null);
-        setTimeout(() => location.reload(), 500);
+    function resetRoom() {
+        if(confirm("Xóa sạch server?")) {
+            gun.get(SHARED_ID).put(null);
+            setTimeout(() => location.reload(), 500);
+        }
     }
 
     function sync(data) {
         if (!data) return;
-        gun.get(SHARED_SERVER_KEY).get('state').put(JSON.stringify(data));
+        gun.get(SHARED_ID).get('state').put(JSON.stringify(data));
         updateUI(data);
     }
 
-    // --- GIỮ NGUYÊN TOÀN BỘ LOGIC GAME CỦA BẠN (GIỮ 100%) ---
+    // --- GIỮ NGUYÊN TOÀN BỘ LOGIC GAME GỐC 100% ---
     const CONFIG = {
         7: { q: [2,3,3,4,4], r: ['Assassin','Morgana','Mordred','Merlin','Percival','Villager','Villager'] },
         8: { q: [3,4,4,5,5], r: ['Assassin','Morgana','Mordred','Merlin','Percival','Villager','Villager','Villager'] },
@@ -226,15 +222,16 @@
     };
 
     function startGame() {
-        const list = Object.values(playersLive).sort((a, b) => a.j - b.j);
-        const n = list.length;
-        if(n < 7) return alert("Cần ít nhất 7 người!");
+        const ps = Object.values(playersLive).sort((a, b) => a.j - b.j);
+        const n = ps.length;
+        if(n < 7) return alert("Cần tối thiểu 7 người!");
         const c = CONFIG[n] || CONFIG[12];
-        const roles = [...c.r].sort(() => Math.random() - 0.5);
-        const order = list.map(p => p.id).sort(() => Math.random() - 0.5);
+        let rolesPool = [...c.r];
+        const roles = rolesPool.sort(() => Math.random() - 0.5);
+        const order = ps.map(p => p.id).sort(() => Math.random() - 0.5);
         const kIdx = Math.floor(Math.random() * n);
         sync({
-            names: list.reduce((a, p) => ({...a, [p.id]: p.name}), {}),
+            names: ps.reduce((a, p) => ({...a, [p.id]: p.name}), {}),
             order, roles: order.reduce((a, id, i) => ({...a, [id]: roles[i]}), {}),
             kingIdx: kIdx, ladyIdx: (kIdx - 1 + n) % n, firstLady: (kIdx - 1 + n) % n,
             round: 1, points: [], failedVotes: 0, phase: 'SELECT', team: [],
@@ -328,7 +325,7 @@
             state.showVotes = true;
             const yes = Object.values(state.votes).filter(x => x === 'YES').length;
             if(yes > state.order.length / 2) { state.phase = 'MISSION'; state.missions = {}; }
-            else { state.failedVotes++; state.kingIdx = (state.kingIdx+1)%state.order.length; state.phase = 'SELECT'; state.team = []; }
+            else { state.failedVotes++; state.kingIdx = (state.kingIdx+1)%state.order.length; state.phase = 'SELECT'; state.team = []; alert("Team bị bác bỏ! Chuyển Vua."); }
         }
         sync(state);
     }
@@ -399,13 +396,14 @@
             if (state.team.includes(id)) div.style.background = 'var(--blue)';
             div.style.left = x + 'px'; div.style.top = y + 'px';
             div.innerHTML = `<span>${state.names[id]}</span>`;
-            if(state.showVotes && state.votes[id]) {
+            if(state.showVotes && state.votes && state.votes[id]) {
                 const v = state.votes[id] === 'YES' ? '✔' : '✖', cls = state.votes[id] === 'YES' ? 'vote-yes' : 'vote-no';
                 div.innerHTML += `<div class="vote-badge ${cls}">${v}</div>`;
             }
             c.appendChild(div);
         });
     }
+
     function toggleRole() { document.getElementById('role-text').classList.toggle('hidden'); }
 </script>
 </body>
