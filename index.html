@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Avalon Online By Nhat - Firebase Sync</title>
+    <title>Avalon Online By Nhat</title>
     <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-database-compat.js"></script>
     <style>
@@ -57,7 +57,7 @@
 <div class="container">
     <div id="view-login" class="card">
         <h1 style="color:var(--gold); text-align:center;">AVALON BY NHAT</h1>
-        <input style="width:90%; padding:12px; margin:10px 0; background:#222; color:white; border-radius:8px; border:1px solid #444;" type="text" id="in-room" placeholder="Mã phòng">
+        <input style="width:90%; padding:12px; margin:10px 0; background:#222; color:white; border-radius:8px; border:1px solid #444;" type="text" id="in-room" placeholder="Mã phòng (vd: 1, 2, 3...)">
         <input style="width:90%; padding:12px; margin:10px 0; background:#222; color:white; border-radius:8px; border:1px solid #444;" type="text" id="in-name" placeholder="Tên của bạn">
         <div style="display:flex; gap:10px;">
             <button onclick="handleEntry('join')">VÀO PHÒNG</button>
@@ -67,9 +67,10 @@
 
     <div id="view-lobby" class="hidden card">
         <h2 id="room-title"></h2>
-        <p id="wait-msg" style="color: var(--gold); font-size: 13px;"></p>
-        <div id="lobby-list" style="text-align: left; margin: 20px 0;"></div>
+        <p id="host-msg" style="color: var(--gold); font-size: 14px; font-weight: bold;"></p>
+        <div id="lobby-list" style="text-align: left; margin: 20px 0; border-top: 1px solid #444; padding-top: 10px;"></div>
         <button id="btn-start" class="hidden" style="background:var(--gold); color:black" onclick="startGame()">BẮT ĐẦU (Cần 7-10 người)</button>
+        <p id="wait-msg" class="hidden" style="font-style: italic; font-size: 13px; color: #888;">Đợi Host bắt đầu game...</p>
     </div>
 
     <div id="view-game" class="hidden">
@@ -118,7 +119,6 @@
 </div>
 
 <script>
-    // MÃ FIREBASE CỦA HÀ ĐÃ ĐƯỢC DÁN VÀO ĐÂY
     const firebaseConfig = {
         apiKey: "AIzaSyAFx9KTvVic2jxrT28Zx9wLIfBABISXnTk",
         authDomain: "avalon-6951b.firebaseapp.com",
@@ -132,8 +132,9 @@
 
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
-    let myID = localStorage.getItem('avalon_id') || 'p_' + Math.random().toString(36).substr(2, 5);
-    localStorage.setItem('avalon_id', myID);
+    
+    // Tạo ID ngẫu nhiên mỗi lần vào (để test trên cùng 1 máy ko bị trùng ID)
+    let myID = 'p_' + Math.random().toString(36).substr(2, 5);
     let myName = '', roomID = '', state = null;
 
     const CONFIG = {
@@ -155,24 +156,47 @@
 
     function joinGame() {
         const pRef = db.ref('rooms/' + roomID + '/players/' + myID);
-        pRef.set({ id: myID, name: myName });
+        pRef.set({ id: myID, name: myName, joinedAt: Date.now() });
         pRef.onDisconnect().remove();
+
         document.getElementById('view-login').classList.add('hidden');
         document.getElementById('view-lobby').classList.remove('hidden');
         document.getElementById('room-title').innerText = "Phòng: " + roomID;
 
+        // Lắng nghe danh sách người chơi
         db.ref('rooms/' + roomID + '/players').on('value', snap => {
-            const players = []; snap.forEach(c => players.push(c.val()));
-            document.getElementById('lobby-list').innerHTML = players.map(p => `• <b>${p.name}</b>`).join('<br>');
-            const isHost = myName.toLowerCase() === 'nhat';
-            const btn = document.getElementById('btn-start');
-            if(isHost) { btn.classList.remove('hidden'); btn.disabled = players.length < 7; document.getElementById('wait-msg').innerText = "Bạn là Host."; }
-            else { document.getElementById('wait-msg').innerText = "Đợi Nhat bắt đầu..."; }
+            let players = [];
+            snap.forEach(c => { players.push(c.val()); });
+            
+            // Sắp xếp theo thời gian vào (người vào trước lên đầu)
+            players.sort((a, b) => a.joinedAt - b.joinedAt);
+            
+            const lobbyList = document.getElementById('lobby-list');
+            lobbyList.innerHTML = players.map((p, idx) => 
+                `• <b>${p.name}</b> ${idx === 0 ? '<span style="color:#f1c40f; font-size:10px; border:1px solid; padding:2px; margin-left:5px;">HOST</span>' : ''}`
+            ).join('<br>');
+
+            // Kiểm tra mình có phải host không (người đầu tiên trong mảng)
+            const isHost = (players.length > 0 && players[0].id === myID);
+            const btnStart = document.getElementById('btn-start');
+            const waitMsg = document.getElementById('wait-msg');
+
+            if (isHost) {
+                document.getElementById('host-msg').innerText = "Bạn là Host của phòng này.";
+                btnStart.classList.remove('hidden');
+                btnStart.disabled = players.length < 7;
+                waitMsg.classList.add('hidden');
+            } else {
+                document.getElementById('host-msg').innerText = "Host là: " + players[0].name;
+                btnStart.classList.add('hidden');
+                waitMsg.classList.remove('hidden');
+            }
         });
 
         db.ref('rooms/' + roomID + '/state').on('value', snap => { if(snap.val()) updateUI(JSON.parse(snap.val())); });
     }
 
+    // --- CÁC LOGIC GAME CÒN LẠI GIỮ NGUYÊN ---
     function startGame() {
         db.ref('rooms/' + roomID + '/players').once('value', snap => {
             const ps = []; snap.forEach(c => ps.push(c.val()));
