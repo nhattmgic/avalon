@@ -1,103 +1,481 @@
-<!-- CHỈ HIỂN THỊ PHẦN SCRIPT VÌ HTML + CSS ÔNG ĐÃ ĐÚNG 100% -->
-<script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-database-compat.js"></script>
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Avalon Pro - King & Lady Sync</title>
+    <!-- SỬ DỤNG FIREBASE KẾT NỐI (Từ Code 1) -->
+    <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-database-compat.js"></script>
+    
+    <!-- CSS GIỮ NGUYÊN 100% TỪ CODE 2 -->
+    <style>
+        :root {
+            --blue: #2471a3; --red: #922b21; --gold: #f1c40f; --dark: #121212; --card: #1e1e1e;
+            --me-border: #ffffff; --king-border: #f1c40f; --lady-border: #3498db; --other-border: #444;
+        }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--dark); color: white; margin: 0; display: flex; flex-direction: column; align-items: center; }
+        .container { width: 100%; max-width: 500px; padding: 15px; box-sizing: border-box; }
+        
+        /* Quest Board - Đã xóa số thứ tự */
+        .quest-board { display: flex; justify-content: center; gap: 8px; margin: 15px 0; }
+        .quest-slot {
+            width: 55px; height: 55px; border-radius: 50%; border: 3px solid #555;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            font-size: 16px; font-weight: bold; background: #222; position: relative;
+        }
+        .quest-slot.win { background: var(--blue) !important; border-color: white; }
+        .quest-slot.fail { background: var(--red) !important; border-color: white; }
+        .quest-slot.current { border-color: var(--gold); box-shadow: 0 0 10px var(--gold); }
+
+        /* Vòng tròn & Icon bầu chọn */
+        .circle-container { position: relative; width: 320px; height: 320px; margin: 30px auto; border-radius: 50%; }
+        .player-node {
+            position: absolute; width: 75px; height: 75px; margin: -37px;
+            background: #333; border-radius: 50%; display: flex; align-items: center;
+            justify-content: center; font-size: 12px; border: 3px solid var(--other-border);
+            transition: 0.3s; box-sizing: border-box; font-weight: bold; text-align: center;
+        }
+        .player-node.me { border-color: var(--me-border); z-index: 5; }
+        .player-node.king { border-color: var(--king-border); box-shadow: 0 0 15px var(--gold); }
+        .player-node.king::after { content: '👑'; position: absolute; top: -18px; font-size: 20px; }
+        .player-node.lady { border-color: var(--lady-border); box-shadow: 0 0 10px var(--blue); }
+        .player-node.lady::after { content: '💧'; position: absolute; bottom: -18px; font-size: 20px; }
+        
+        .player-node.king-lady {
+            border: 4px solid transparent;
+            background-image: linear-gradient(#333, #333), conic-gradient(var(--gold) 50%, var(--lady-border) 0);
+            background-origin: border-box; background-clip: content-box, border-box;
+            box-shadow: 0 0 15px var(--gold), 0 0 10px var(--blue);
+        }
+        
+        .vote-badge {
+            position: absolute; top: -10px; right: -10px; width: 25px; height: 25px;
+            border-radius: 50%; display: flex; align-items: center; justify-content: center;
+            font-size: 14px; font-weight: bold; z-index: 10; border: 1px solid white;
+        }
+        .vote-yes { background: #27ae60; color: white; }
+        .vote-no { background: #c0392b; color: white; }
+
+        .selectable-name {
+            padding: 12px; background: #2a2a2a; margin: 5px 0; border-radius: 8px;
+            cursor: pointer; font-weight: bold; border: 2px solid transparent;
+        }
+        .selectable-name.selected { background: var(--blue); border-color: white; }
+
+        .card { background: var(--card); padding: 20px; border-radius: 15px; width: 100%; margin-bottom: 20px; box-shadow: 0 5px 15px rgba(0,0,0,0.5); }
+        button { width: 100%; padding: 15px; margin: 10px 0; border-radius: 8px; border: none; font-size: 16px; font-weight: bold; cursor: pointer; background: var(--blue); color: white; }
+        button:disabled { background: #444 !important; opacity: 0.6; }
+        button.clicked { background: white !important; color: black !important; }
+        .hidden { display: none; }
+        .evil-text { color: #ff4d4d; font-weight: bold; }
+        .blue-text { color: #5dade2; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <!-- VIEW LOGIN (Giao diện giữ Tên của Code 2 nhưng dùng cấu trúc của Code 1 để có Quản lý Host & Tạo phòng) -->
+    <div id="view-login" class="card">
+        <h1 style="color:var(--gold); text-align:center;">AVALON PRO</h1>
+        <input style="width:90%; padding:12px; margin:10px 0; background:#222; color:white; border-radius:8px; border:1px solid #444;" type="text" id="in-room" placeholder="Mã phòng (vd: 1, 2, 3...)">
+        <input style="width:90%; padding:12px; margin:10px 0; background:#222; color:white; border-radius:8px; border:1px solid #444;" type="text" id="in-name" placeholder="Tên của bạn">
+        <div style="display:flex; gap:10px;">
+            <button onclick="handleEntry('join')">VÀO PHÒNG</button>
+            <button onclick="handleEntry('create')" style="background:var(--gold); color:black">TẠO MỚI</button>
+        </div>
+    </div>
+
+    <!-- VIEW LOBBY (Hỗ trợ Firebase quản lý Host từ Code 1) -->
+    <div id="view-lobby" class="hidden card">
+        <h2 id="room-title"></h2>
+        <p id="host-msg" style="color: var(--gold); font-size: 14px; font-weight: bold;"></p>
+        <div id="lobby-list" style="text-align: left; margin: 20px 0; border-top: 1px solid #444; padding-top: 10px;"></div>
+        <button id="btn-start" class="hidden" style="background:var(--gold); color:black" onclick="startGame()">BẮT ĐẦU (Cần 7-10 người)</button>
+        <p id="wait-msg" class="hidden" style="font-style: italic; font-size: 13px; color: #888;">Đợi Host bắt đầu game...</p>
+    </div>
+
+    <!-- VIEW GAME (100% CẤU TRÚC GAME TỪ CODE 2) -->
+    <div id="view-game" class="hidden">
+        <div class="quest-board" id="quest-board"></div>
+        <div style="text-align:center; margin-bottom:10px; font-weight:bold; color:#aaa;" id="failed-bar">Lần bầu chọn: 0/3</div>
+        
+        <div class="circle-container" id="player-circle"></div>
+
+        <div class="card">
+            <div id="role-area">
+                <div id="role-text" class="hidden" style="background:#000; padding:15px; border:2px solid var(--gold); margin-bottom:10px;"></div>
+                <button onclick="toggleRole()" style="background:#444;">Xem vai trò</button>
+            </div>
+
+            <h3 id="game-status" style="color:var(--gold); text-align:center;"></h3>
+
+            <div id="phase-select" class="hidden">
+                <p>Vua chọn <span id="num-needed"></span> người:</p>
+                <div id="select-list"></div>
+                <button id="btn-submit-team" onclick="submitTeam(this)" style="background:var(--gold); color:black">XÁC NHẬN ĐỘI</button>
+            </div>
+
+            <div id="phase-vote" class="hidden">
+                <p>Biểu quyết cho đội này?</p>
+                <div style="display:flex; gap:10px;">
+                    <button id="btn-vote-yes" onclick="castVote('YES', this)" style="background:#27ae60">YES (✔)</button>
+                    <button id="btn-vote-no" onclick="castVote('NO', this)" style="background:#c0392b">NO (✖)</button>
+                </div>
+            </div>
+
+            <div id="phase-mission" class="hidden">
+                <p>Thực hiện nhiệm vụ bí mật:</p>
+                <button id="btn-ms-win" onclick="castMission('WIN', this)">THÀNH CÔNG</button>
+                <button id="btn-ms-fail" onclick="castMission('FAIL', this)" style="background:var(--red)">THẤT BẠI</button>
+            </div>
+
+            <div id="phase-lady" class="hidden">
+                <p>Lady of the Lake, chọn 1 người để soi:</p>
+                <div id="lady-list"></div>
+                <button id="btn-lady" onclick="submitLady(this)" style="background:var(--gold); color:black">SOI VAI TRÒ</button>
+            </div>
+
+            <div id="phase-assassin" class="hidden">
+                <p class="evil-text">CHỌN NGƯỜI LÀ MERLIN ĐỂ ÁM SÁT</p>
+                <div id="assassin-list"></div>
+                <button id="btn-assassin" onclick="submitAssassin(this)" style="background:var(--red)">RA TAY</button>
+            </div>
+
+            <div id="phase-result" class="hidden">
+                <h2 id="result-msg" style="text-align:center;"></h2>
+                <button id="btn-next" onclick="handleFlow(this)" style="background:var(--gold); color:black">TIẾP TỤC</button>
+            </div>
+        </div>
+    </div>
+</div>
 
 <script>
-/* ===== FIREBASE ===== */
-const firebaseConfig = {
-    apiKey: "AIzaSyAFx9KTvVic2jxrT28Zx9wLIfBABISXnTk",
-    authDomain: "avalon-6951b.firebaseapp.com",
-    databaseURL: "https://avalon-6951b-default-rtdb.asia-southeast1.firebasedatabase.app",
-    projectId: "avalon-6951b"
-};
-firebase.initializeApp(firebaseConfig);
-const db = firebase.database();
+    // === PHẦN KẾT NỐI FIREBASE TỪ CODE 1 ===
+    const firebaseConfig = {
+        apiKey: "AIzaSyAFx9KTvVic2jxrT28Zx9wLIfBABISXnTk",
+        authDomain: "avalon-6951b.firebaseapp.com",
+        databaseURL: "https://avalon-6951b-default-rtdb.asia-southeast1.firebasedatabase.app",
+        projectId: "avalon-6951b",
+        storageBucket: "avalon-6951b.firebasestorage.app",
+        messagingSenderId: "431540894930",
+        appId: "1:431540894930:web:44e5ace0abd50c24c2810b",
+        measurementId: "G-NYSQ42BVMG"
+    };
 
-/* ===== GIỮ NGUYÊN ===== */
-let myID = 'p_' + Math.random().toString(36).substr(2, 5);
-let myName = '', roomID = '', state = null;
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+    
+    let myID = 'p_' + Math.random().toString(36).substr(2, 5);
+    let myName = '', roomID = '', state = null;
 
-/* ===== CONFIG GIỮ NGUYÊN ===== */
-const CONFIG = {
-    7: { q: [2,3,3,4,4], r: ['Assassin','Morgana','Mordred','Merlin','Percival','Villager','Villager'] },
-    8: { q: [3,4,4,5,5], r: ['Assassin','Morgana','Mordred','Merlin','Percival','Villager','Villager','Villager'] },
-    9: { q: [3,4,4,5,5], r: ['Assassin','Morgana','Mordred','Merlin','Percival','Villager','Villager','Villager','Villager'] },
-    10:{ q: [3,4,4,5,5], r: ['Assassin','Morgana','Mordred','Merlin','Percival','Villager','Villager','Villager','Villager','Villager'] }
-};
+    // === CONFIG GAME TỪ CODE 2 ===
+    const CONFIG = {
+        7: { q: [2,3,3,4,4], r: ['Assassin','Morgana','Mordred','Merlin','Percival','Villager','Villager'] },
+        8: { q: [3,4,4,5,5], r: ['Assassin','Morgana','Mordred','Merlin','Percival','Villager','Villager','Villager'] },
+        9: { q: [3,4,4,5,5], r: ['Assassin','Morgana','Mordred','Merlin','Percival','Villager','Villager','Villager','Villager'] },
+        10: { q: [3,4,4,5,5], r: ['Assassin','Morgana','Mordred','Merlin','Percival','Villager','Villager','Villager','Villager','Villager'] }
+    };
 
-/* ===== SYNC (CHỈ THAY CHỖ NÀY) ===== */
-function sync(data) {
-    db.ref('rooms/' + roomID + '/state').set(JSON.stringify(data));
-}
+    // Hàm đồng bộ của Firebase (Từ Code 1)
+    function sync(data) { 
+        db.ref('rooms/' + roomID + '/state').set(JSON.stringify(data)); 
+    }
 
-/* ===== CLEANUP ===== */
-function cleanup() {
-    db.ref('rooms/' + roomID).remove();
-}
+    // Hàm dọn phòng của Code 2 (Được điều chỉnh nhẹ cho Firebase)
+    function cleanup() {
+        db.ref('rooms/' + roomID).remove();
+    }
 
-/* ===== JOIN GAME (CODE 1) ===== */
-function joinGame() {
-    roomID = document.getElementById('in-room').value.trim();
-    myName = document.getElementById('in-name').value.trim();
-    if(!roomID || !myName) return alert("Vui lòng điền đủ!");
+    // Xử lý vào phòng (Từ Code 1)
+    function handleEntry(mode) {
+        roomID = document.getElementById('in-room').value.trim();
+        myName = document.getElementById('in-name').value.trim();
+        if(!roomID || !myName) return alert("Điền đủ tên và mã phòng!");
+        if (mode === 'create') db.ref('rooms/' + roomID).remove();
+        joinGame();
+    }
 
-    const pRef = db.ref('rooms/' + roomID + '/players/' + myID);
-    pRef.set({ id: myID, name: myName, joinedAt: Date.now() });
-    pRef.onDisconnect().remove();
+    // Logic Quản lý người chơi/Lobby (Từ Code 1)
+    function joinGame() {
+        const pRef = db.ref('rooms/' + roomID + '/players/' + myID);
+        pRef.set({ id: myID, name: myName, joinedAt: Date.now() });
+        pRef.onDisconnect().remove();
 
-    document.getElementById('view-login').classList.add('hidden');
-    document.getElementById('view-lobby').classList.remove('hidden');
-    document.getElementById('room-title').innerText = "Phòng: " + roomID;
+        document.getElementById('view-login').classList.add('hidden');
+        document.getElementById('view-lobby').classList.remove('hidden');
+        document.getElementById('room-title').innerText = "Phòng: " + roomID;
 
-    db.ref('rooms/' + roomID + '/players').on('value', snap => {
-        let players = [];
-        snap.forEach(c => players.push(c.val()));
-        players.sort((a,b)=>a.joinedAt - b.joinedAt);
+        db.ref('rooms/' + roomID + '/players').on('value', snap => {
+            let players = [];
+            snap.forEach(c => { players.push(c.val()); });
+            
+            players.sort((a, b) => a.joinedAt - b.joinedAt);
+            
+            const lobbyList = document.getElementById('lobby-list');
+            lobbyList.innerHTML = players.map((p, idx) => 
+                `• <b>${p.name}</b> ${idx === 0 ? '<span style="color:#f1c40f; font-size:10px; border:1px solid; padding:2px; margin-left:5px;">HOST</span>' : ''}`
+            ).join('<br>');
 
-        document.getElementById('lobby-list').innerHTML =
-            players.map((p,i)=>`• <b>${p.name}</b> ${i===0?'(HOST)':''}`).join('<br>');
+            const isHost = (players.length > 0 && players[0].id === myID);
+            const btnStart = document.getElementById('btn-start');
+            const waitMsg = document.getElementById('wait-msg');
 
-        if(players.length >= 7 && players[0].id === myID){
-            document.getElementById('btn-start').classList.remove('hidden');
-        }
-    });
-
-    db.ref('rooms/' + roomID + '/state').on('value', snap => {
-        if(snap.val()) updateUI(JSON.parse(snap.val()));
-    });
-}
-
-/* ===== START GAME (GIỮ NGUYÊN) ===== */
-function startGame() {
-    db.ref('rooms/' + roomID + '/players').once('value', snap => {
-        const ps = []; snap.forEach(c => ps.push(c.val()));
-        const n = ps.length;
-        const c = CONFIG[n] || CONFIG[10];
-
-        let rolesPool = [...c.r];
-        if (n > 10) for (let i = 10; i < n; i++) rolesPool.push('Villager');
-
-        const roles = rolesPool.sort(() => Math.random() - 0.5);
-        const order = ps.map(p => p.id).sort(() => Math.random() - 0.5);
-        const kIdx = Math.floor(Math.random() * n);
-
-        sync({
-            names: ps.reduce((a,p)=>({...a,[p.id]:p.name}),{}),
-            order,
-            roles: order.reduce((a,id,i)=>({...a,[id]:roles[i]}),{}),
-            kingIdx: kIdx,
-            ladyIdx: (kIdx - 1 + n) % n,
-            firstLady: (kIdx - 1 + n) % n,
-            round: 1,
-            points: [],
-            failedVotes: 0,
-            phase: 'SELECT',
-            team: [],
-            votes: {},
-            missions: {},
-            showVotes: false
+            if (isHost) {
+                document.getElementById('host-msg').innerText = "Bạn là Host của phòng này.";
+                btnStart.classList.remove('hidden');
+                btnStart.disabled = players.length < 7;
+                waitMsg.classList.add('hidden');
+            } else {
+                document.getElementById('host-msg').innerText = "Host là: " + players[0].name;
+                btnStart.classList.add('hidden');
+                waitMsg.classList.remove('hidden');
+            }
         });
-    });
-}
 
+        db.ref('rooms/' + roomID + '/state').on('value', snap => { if(snap.val()) updateUI(JSON.parse(snap.val())); });
+    }
+
+    // Bắt đầu Game: Trích xuất Player từ Firebase (Code 1) nhưng Logic tạo Role là của Code 2
+    function startGame() {
+        db.ref('rooms/' + roomID + '/players').once('value', snap => {
+            const ps = []; snap.forEach(c => ps.push(c.val()));
+            
+            // --- LOGIC GAME 100% TỪ CODE 2 BẮT ĐẦU TỪ ĐÂY ---
+            const n = ps.length;
+            const c = CONFIG[n] || CONFIG[10];
+            
+            let rolesPool = [...c.r];
+            // Nếu trên 10 người, thêm dân làng để bù vào
+            if (n > 10) {
+                for (let i = 10; i < n; i++) rolesPool.push('Villager');
+            }
+
+            const roles = rolesPool.sort(() => Math.random() - 0.5);
+            const order = ps.map(p => p.id).sort(() => Math.random() - 0.5);
+            const kIdx = Math.floor(Math.random() * n);
+            sync({
+                names: ps.reduce((a, p) => ({...a, [p.id]: p.name}), {}),
+                order, roles: order.reduce((a, id, i) => ({...a, [id]: roles[i]}), {}),
+                kingIdx: kIdx, ladyIdx: (kIdx - 1 + n) % n, firstLady: (kIdx - 1 + n) % n,
+                round: 1, points: [], failedVotes: 0, phase: 'SELECT', team: [],
+                votes: {}, missions: {}, showVotes: false
+            });
+        });
+    }
+
+    // === TẤT CẢ CÁC HÀM UPDATE VÀ XỬ LÝ GAME SAU ĐÂY GIỮ NGUYÊN 100% TỪ CODE 2 ===
+    function updateUI(s) {
+        state = s;
+        document.getElementById('view-lobby').classList.add('hidden');
+        document.getElementById('view-game').classList.remove('hidden');
+        
+        // Quest Board - Xóa số 1,2,3...
+        const qC = (CONFIG[s.order.length] || CONFIG[10]).q;
+        document.getElementById('quest-board').innerHTML = qC.map((num, i) => {
+            let cls = (s.round === i+1) ? 'current' : '';
+            if(s.points[i] === 'WIN') cls = 'win';
+            if(s.points[i] === 'FAIL') cls = 'fail';
+            return `<div class="quest-slot ${cls}"><small>${num}</small></div>`;
+        }).join('');
+        document.getElementById('failed-bar').innerText = `Lần bầu chọn vòng này: ${s.failedVotes}/3`;
+
+        renderCircle();
+        document.getElementById('game-status').innerText = `Vua: ${s.names[s.order[s.kingIdx]]}`;
+
+        ['phase-select','phase-vote','phase-mission','phase-lady','phase-assassin','phase-result'].forEach(p => {
+            document.getElementById(p).classList.add('hidden');
+            const btns = document.getElementById(p).querySelectorAll('button');
+            btns.forEach(b => { b.disabled = false; b.classList.remove('clicked'); });
+        });
+
+        if(s.phase === 'SELECT' && myID === s.order[s.kingIdx]) {
+            document.getElementById('phase-select').classList.remove('hidden');
+            document.getElementById('num-needed').innerText = qC[s.round-1];
+            document.getElementById('select-list').innerHTML = s.order.map(id => `
+                <div class="selectable-name ${s.team.includes(id)?'selected':''}" onclick="toggleSelect('${id}')">${s.names[id]}</div>
+            `).join('');
+        } else if(s.phase === 'VOTE') {
+            document.getElementById('phase-vote').classList.remove('hidden');
+            if(s.votes[myID]) lock('phase-vote');
+        } else if(s.phase === 'MISSION' && s.team.includes(myID)) {
+            document.getElementById('phase-mission').classList.remove('hidden');
+            document.getElementById('btn-ms-fail').style.display = ['Assassin','Morgana','Mordred'].includes(s.roles[myID]) ? 'block' : 'none';
+            if(s.missions[myID]) lock('phase-mission');
+        } else if(s.phase === 'LADY' && myID === s.order[s.ladyIdx]) {
+            document.getElementById('phase-lady').classList.remove('hidden');
+            document.getElementById('lady-list').innerHTML = s.order.filter(id => id !== myID).map(id => `
+                <div class="selectable-name" id="l-${id}" onclick="selLady('${id}')">${s.names[id]}</div>
+            `).join('');
+        } else if(s.phase === 'ASSASSIN' && s.roles[myID] === 'Assassin') {
+            document.getElementById('phase-assassin').classList.remove('hidden');
+            document.getElementById('assassin-list').innerHTML = s.order.filter(id => s.roles[id] !== 'Assassin').map(id => `
+                <div class="selectable-name" id="a-${id}" onclick="selKill('${id}')">${s.names[id]}</div>
+            `).join('');
+        } else if(s.phase === 'RESULT') {
+            document.getElementById('phase-result').classList.remove('hidden');
+            document.getElementById('result-msg').innerHTML = s.lastMsg;
+        }
+
+        // --- CẬP NHẬT XEM VAI TRÒ THEO MÀU ---
+        const myRole = s.roles[myID];
+        const isRed = ['Assassin','Morgana','Mordred'].includes(myRole);
+        let rInfo = `VAI TRÒ: <b class="${isRed?'evil-text':'blue-text'}">${myRole}</b><br>`;
+        
+        if(myRole === 'Merlin') {
+            // Merlin thấy Assassin và Morgana (không thấy Mordred)
+            const enemies = s.order.filter(id => ['Assassin','Morgana'].includes(s.roles[id])).map(id => s.names[id]);
+            rInfo += `<small class="evil-text">Kẻ thù: ${enemies.join(', ')}</small>`;
+        } else if (myRole === 'Percival') {
+            // Percival thấy Merlin và Morgana
+            const magic = s.order.filter(id => ['Merlin','Morgana'].includes(s.roles[id])).map(id => s.names[id]);
+            rInfo += `<small class="blue-text">Thấy Merlin hoặc Morgana: ${magic.join(', ')}</small>`;
+        } else if(isRed) {
+            // Quỷ thấy nhau, Mordred được chỉ rõ, còn lại là "Đồng bọn"
+            const evils = s.order.filter(id => id !== myID && ['Assassin','Morgana','Mordred'].includes(s.roles[id])).map(id => {
+                let label = (s.roles[id] === 'Mordred') ? ' (Mordred)' : ' (Đồng bọn)';
+                return `<span class="evil-text">${s.names[id]}</span>${label}`;
+            });
+            rInfo += `<small>Đồng đội: ${evils.join(', ')}</small>`;
+        }
+        document.getElementById('role-text').innerHTML = rInfo;
+    }
+
+    function lock(p) { document.getElementById(p).querySelectorAll('button').forEach(b => b.disabled = true); }
+
+    function toggleSelect(id) {
+        if(state.team.includes(id)) state.team = state.team.filter(x => x !== id);
+        else if(state.team.length < (CONFIG[state.order.length] || CONFIG[10]).q[state.round-1]) state.team.push(id);
+        sync(state);
+    }
+
+    function submitTeam(btn) {
+        if(state.team.length !== (CONFIG[state.order.length] || CONFIG[10]).q[state.round-1]) return alert("Chọn đúng số người!");
+        btn.classList.add('clicked');
+        if(state.failedVotes >= 3) { state.phase = 'MISSION'; state.missions = {}; state.showVotes = false; }
+        else { state.phase = 'VOTE'; state.votes = {}; state.showVotes = false; }
+        sync(state);
+    }
+
+    function castVote(v, btn) {
+        btn.classList.add('clicked'); lock('phase-vote');
+        state.votes[myID] = v;
+        if(Object.keys(state.votes).length === state.order.length) {
+            state.showVotes = true;
+            const yes = Object.values(state.votes).filter(x => x === 'YES').length;
+            if(yes > state.order.length / 2) { state.phase = 'MISSION'; state.missions = {}; }
+            else { 
+                state.failedVotes++; 
+                state.kingIdx = (state.kingIdx + 1) % state.order.length; 
+                state.phase = 'SELECT'; state.team = []; 
+                alert("Team bị bác bỏ! Chuyển Vua.");
+            }
+        }
+        sync(state);
+    }
+
+    function castMission(v, btn) {
+        btn.classList.add('clicked'); lock('phase-mission');
+        state.missions[myID] = v;
+        if(Object.keys(state.missions).length === state.team.length) {
+            const f = Object.values(state.missions).filter(x => x === 'FAIL').length;
+            const win = f < ((state.order.length >= 7 && state.round === 4) ? 2 : 1);
+            state.points[state.round-1] = win ? 'WIN' : 'FAIL';
+            state.lastMsg = win ? `<span class="blue-text">THÀNH CÔNG!</span>` : `<span class="red">THẤT BẠI! (${f} đỏ)</span>`;
+            state.phase = 'RESULT';
+        }
+        sync(state);
+    }
+
+    function handleFlow(btn) {
+        btn.classList.add('clicked');
+        const bW = state.points.filter(x => x === 'WIN').length;
+        const rW = state.points.filter(x => x === 'FAIL').length;
+        if(rW >= 3) { 
+            state.lastMsg = "<h1 class='red'>PHE ĐỎ THẮNG!</h1>"; 
+            sync(state); 
+            setTimeout(cleanup, 10000); // 10 giây sau xóa phòng
+            return; 
+        }
+        if(bW >= 3) { state.phase = 'ASSASSIN'; sync(state); return; }
+
+        if(state.round >= 2 && state.round <= 4) {
+            state.phase = 'LADY'; ladyT = null;
+        } else {
+            proceedRound();
+        }
+        sync(state);
+    }
+
+    function proceedRound() {
+        state.round++;
+        state.kingIdx = (state.kingIdx + 1) % state.order.length;
+        state.phase = 'SELECT';
+        state.team = [];
+        state.failedVotes = 0;
+        state.votes = {};
+        state.showVotes = false;
+    }
+
+    let ladyT = null;
+    function selLady(id) {
+        if(id === state.order[state.firstLady]) return alert("Không soi lady đầu!");
+        ladyT = id;
+        document.querySelectorAll('#lady-list .selectable-name').forEach(e => e.classList.remove('selected'));
+        document.getElementById('l-'+id).classList.add('selected');
+    }
+
+    function submitLady(btn) {
+        if(!ladyT) return alert("Chọn người!");
+        btn.classList.add('clicked');
+        const isR = ['Assassin','Morgana','Mordred'].includes(state.roles[ladyT]);
+        alert(`${state.names[ladyT]} là phe: ${isR ? 'ĐỎ' : 'XANH'}`);
+        state.ladyIdx = state.order.indexOf(ladyT);
+        proceedRound();
+        sync(state);
+    }
+
+    let killT = null;
+    function selKill(id) {
+        killT = id;
+        document.querySelectorAll('#assassin-list .selectable-name').forEach(e => e.classList.remove('selected'));
+        document.getElementById('a-'+id).classList.add('selected');
+    }
+
+    function submitAssassin(btn) {
+        if(!killT) return alert("Chọn Merlin!");
+        const merlinKilled = state.roles[killT] === 'Merlin';
+        state.lastMsg = merlinKilled ? "<h1 class='red'>GIẾT ĐÚNG MERLIN! ĐỎ THẮNG!</h1>" : "<h1 class='blue-text'>GIẾT SAI! XANH THẮNG!</h1>";
+        state.phase = 'RESULT'; 
+        sync(state);
+        setTimeout(cleanup, 10000); // 10 giây sau xóa phòng
+    }
+
+    function renderCircle() {
+        const c = document.getElementById('player-circle'); c.innerHTML = '';
+        const n = state.order.length; const myIdx = state.order.indexOf(myID);
+        state.order.forEach((id, i) => {
+            const angle = ((i - myIdx) * (360/n) + 90) * (Math.PI/180);
+            const x = 160 + 115 * Math.cos(angle), y = 160 + 115 * Math.sin(angle);
+            const div = document.createElement('div'); div.className = 'player-node';
+            if (id === myID) div.classList.add('me');
+            const isK = i === state.kingIdx, isL = i === state.ladyIdx;
+            if (isK && isL) div.classList.add('king-lady');
+            else if (isK) div.classList.add('king');
+            else if (isL) div.classList.add('lady');
+            if (state.team.includes(id)) div.classList.add('selected');
+            div.style.left = x + 'px'; div.style.top = y + 'px';
+            div.innerHTML = `<span>${state.names[id]}</span>`;
+            if(state.showVotes && state.votes[id]) {
+                const v = state.votes[id] === 'YES' ? '✔' : '✖';
+                const cls = state.votes[id] === 'YES' ? 'vote-yes' : 'vote-no';
+                div.innerHTML += `<div class="vote-badge ${cls}">${v}</div>`;
+            }
+            c.appendChild(div);
+        });
+    }
+
+    function toggleRole() { document.getElementById('role-text').classList.toggle('hidden'); }
 </script>
+</body>
+</html>
