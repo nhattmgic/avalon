@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Avalon Pro - King & Lady Sync</title>
-    <!-- SỬ DỤNG FIREBASE KẾT NỐI -->
+    <title>Avalon Pro - Khắc phục Firebase</title>
+    <!-- FIREBASE -->
     <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-database-compat.js"></script>
     
@@ -16,6 +16,7 @@
         body { font-family: 'Segoe UI', sans-serif; background: var(--dark); color: white; margin: 0; display: flex; flex-direction: column; align-items: center; }
         .container { width: 100%; max-width: 500px; padding: 15px; box-sizing: border-box; }
         
+        /* Quest Board */
         .quest-board { display: flex; justify-content: center; gap: 8px; margin: 15px 0; }
         .quest-slot {
             width: 55px; height: 55px; border-radius: 50%; border: 3px solid #555;
@@ -26,6 +27,7 @@
         .quest-slot.fail { background: var(--red) !important; border-color: white; }
         .quest-slot.current { border-color: var(--gold); box-shadow: 0 0 10px var(--gold); }
 
+        /* Vòng tròn & Icon */
         .circle-container { position: relative; width: 320px; height: 320px; margin: 30px auto; border-radius: 50%; }
         .player-node {
             position: absolute; width: 75px; height: 75px; margin: -37px;
@@ -34,10 +36,13 @@
             transition: 0.3s; box-sizing: border-box; font-weight: bold; text-align: center;
         }
         .player-node.me { border-color: var(--me-border); z-index: 5; }
+        
+        /* Đã fix CSS Icon: Vua và Lady hiển thị đúng dù có trùng 1 người */
         .player-node.king { border-color: var(--king-border); box-shadow: 0 0 15px var(--gold); }
-        .player-node.king::after { content: '👑'; position: absolute; top: -18px; font-size: 20px; }
+        .player-node.king::after, .player-node.king-lady::after { content: '👑'; position: absolute; top: -18px; font-size: 20px; }
+        
         .player-node.lady { border-color: var(--lady-border); box-shadow: 0 0 10px var(--blue); }
-        .player-node.lady::after { content: '💧'; position: absolute; bottom: -18px; font-size: 20px; }
+        .player-node.lady::before, .player-node.king-lady::before { content: '💧'; position: absolute; bottom: -18px; font-size: 20px; }
         
         .player-node.king-lady {
             border: 4px solid transparent;
@@ -184,12 +189,7 @@
         roomID = document.getElementById('in-room').value.trim();
         myName = document.getElementById('in-name').value.trim();
         if(!roomID || !myName) return alert("Điền đủ tên và mã phòng!");
-        
-        // SỬA LỖI TẠI ĐÂY: KHÔNG DÙNG remove() toàn bộ phòng nữa để tránh đá văng người chơi.
-        // Chỉ xóa dữ liệu ván game cũ (nếu có) để làm mới.
-        if (mode === 'create') {
-            db.ref('rooms/' + roomID + '/state').remove();
-        }
+        if (mode === 'create') db.ref('rooms/' + roomID).remove();
         joinGame();
     }
 
@@ -220,11 +220,10 @@
             if (isHost) {
                 document.getElementById('host-msg').innerText = "Bạn là Host của phòng này.";
                 btnStart.classList.remove('hidden');
-                // Nút chỉ bật nếu đủ 7 người trở lên (Có thể tạm xóa dòng dưới nếu bạn muốn test ít người)
                 btnStart.disabled = players.length < 7;
                 waitMsg.classList.add('hidden');
             } else {
-                document.getElementById('host-msg').innerText = "Host là: " + (players[0] ? players[0].name : '');
+                document.getElementById('host-msg').innerText = "Host là: " + players[0].name;
                 btnStart.classList.add('hidden');
                 waitMsg.classList.remove('hidden');
             }
@@ -259,6 +258,14 @@
     }
 
     function updateUI(s) {
+        // --- ĐÂY LÀ LỚP BẢO VỆ FIREBASE CHỐNG CRASH KHI MẢNG RỖNG BỊ XOÁ ---
+        s.team = s.team || [];
+        s.points = s.points || [];
+        s.votes = s.votes || {};
+        s.missions = s.missions || {};
+        s.failedVotes = s.failedVotes || 0;
+        // ------------------------------------------------------------------
+
         state = s;
         document.getElementById('view-lobby').classList.add('hidden');
         document.getElementById('view-game').classList.remove('hidden');
@@ -382,7 +389,7 @@
         if(rW >= 3) { 
             state.lastMsg = "<h1 class='red'>PHE ĐỎ THẮNG!</h1>"; 
             sync(state); 
-            setTimeout(cleanup, 10000);
+            setTimeout(cleanup, 10000); 
             return; 
         }
         if(bW >= 3) { state.phase = 'ASSASSIN'; sync(state); return; }
@@ -436,7 +443,7 @@
         state.lastMsg = merlinKilled ? "<h1 class='red'>GIẾT ĐÚNG MERLIN! ĐỎ THẮNG!</h1>" : "<h1 class='blue-text'>GIẾT SAI! XANH THẮNG!</h1>";
         state.phase = 'RESULT'; 
         sync(state);
-        setTimeout(cleanup, 10000);
+        setTimeout(cleanup, 10000); 
     }
 
     function renderCircle() {
